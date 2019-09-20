@@ -33,6 +33,7 @@
 #     (default="EAP")
 #   mod_res_obj - mirt model results object from mirt analysis. This must
 #     be from the same mirt model as pars.
+#   save_sims - option to output simulated datasets (default=FALSE)
 
 # equateSim returns a list with 2 elements:
 # 1. "summary" - a dataframe that has summary statistics (rmse, mean
