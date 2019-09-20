@@ -13,14 +13,14 @@ library(dplyr)
 library(listviewer)
 library(reactR)
 
-# Define UI for application that draws a histogram
+# Define UI for application 
 ui <- fluidPage(
     
     # Application title
     titlePanel("equateSim"),
     
     
-    # Sidebar with a slider input for number of bins 
+    # Sidebar with inputs 
     sidebarLayout(
         sidebarPanel(
             #h1("If a mirt parameter file is not uploaded, IRT parameters will be simulated."),
@@ -75,7 +75,7 @@ ui <- fluidPage(
         )
     ))
 
-# Define server logic required to draw a histogram
+# Define server logic
 server <- function(input, output, session) {
     
     # equateSim is a function the uses R mirt item response theory (IRT) methods
