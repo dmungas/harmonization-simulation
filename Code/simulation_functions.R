@@ -228,14 +228,21 @@ equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
         stat[10,i] <- sd(df[df$group==2,"ability_est"],na.rm=TRUE)
         stat[11,i] <- sd(df[df$group==1,"abil_est_st"],na.rm=TRUE)
         stat[12,i] <- sd(df[df$group==2,"abil_est_st"],na.rm=TRUE)
+        stat[13,i] <- sqrt(mean(df[,"resid"]^2,na.rm=TRUE))
+        stat[14,i] <- sqrt(mean(df[,"resid_st"]^2,na.rm=TRUE))
+        stat[15,i] <- mean(df[,"ability_est"],na.rm=TRUE)
+        stat[16,i] <- mean(df[,"abil_est_st"],na.rm=TRUE)
+        stat[17,i] <- sd(df[,"ability_est"],na.rm=TRUE)
+        stat[18,i] <- sd(df[,"abil_est_st"],na.rm=TRUE)
         names(stat)[i] <- nm
         stat[c(1,3,5,7,9,11),"group"] <- 1
         stat[c(2,4,6,8,10,12),"group"] <- 2
-        stat[c(1,2,5,6,9,10),"type"] <- "raw"
-        stat[c(3,4,7,8,11,12),"type"] <- "standardized"
-        stat[c(1:4),"statistic"] <- "rmse"
-        stat[c(5:8),"statistic"] <- "est_mean"
-        stat[c(9:12),"statistic"] <- "est_sd"
+        stat[c(13:18),"group"] <- 0
+        stat[c(1,2,5,6,9,10,13,15,17),"type"] <- "raw"
+        stat[c(3,4,7,8,11,12,14,16,18),"type"] <- "standardized"
+        stat[c(1:4,13:14),"statistic"] <- "rmse"
+        stat[c(5:8,15:16),"statistic"] <- "est_mean"
+        stat[c(9:12,17:18),"statistic"] <- "est_sd"
         stat$samp_num <- j
       } # end for i
     }
@@ -379,25 +386,37 @@ summaryStats <- function(df) {
       df$statistic == "rmse","avg"])
   rmse_grp_2 <- mean(df[df$group == 2 & df$type == "raw" & 
       df$statistic == "rmse","avg"])
+  rmse_grp_0 <- mean(df[df$group == 0 & df$type == "raw" & 
+      df$statistic == "rmse","avg"])
   rmse_st_grp_1 <- mean(df[df$group == 1 & df$type == "standardized" & 
       df$statistic == "rmse","avg"])
   rmse_st_grp_2 <- mean(df[df$group == 2 & df$type == "standardized" & 
       df$statistic == "rmse","avg"])
+  rmse_st_grp_0 <- mean(df[df$group == 0 & df$type == "standardized" & 
+        df$statistic == "rmse","avg"])
   mean_grp_1 <- mean(df[df$group == 1 & df$type == "raw" & 
       df$statistic == "est_mean","avg"])
   mean_grp_2 <- mean(df[df$group == 2 & df$type == "raw" & 
+      df$statistic == "est_mean","avg"])
+  mean_grp_0 <- mean(df[df$group == 0 & df$type == "raw" & 
       df$statistic == "est_mean","avg"])
   mean_st_grp_1 <- mean(df[df$group == 1 & df$type == "standardized" & 
       df$statistic == "est_mean","avg"])
   mean_st_grp_2 <- mean(df[df$group == 2 & df$type == "standardized" & 
       df$statistic == "est_mean","avg"])
+  mean_st_grp_0 <- mean(df[df$group == 0 & df$type == "standardized" & 
+        df$statistic == "est_mean","avg"])
   sd_grp_1 <- mean(df[df$group == 1 & df$type == "raw" & 
       df$statistic == "est_sd","avg"])
   sd_grp_2 <- mean(df[df$group == 2 & df$type == "raw" & 
       df$statistic == "est_sd","avg"])
+  sd_grp_0 <- mean(df[df$group == 0 & df$type == "raw" & 
+      df$statistic == "est_sd","avg"])
   sd_st_grp_1 <- mean(df[df$group == 1 & df$type == "standardized" & 
       df$statistic == "est_sd","avg"])
   sd_st_grp_2 <- mean(df[df$group == 2 & df$type == "standardized" & 
+      df$statistic == "est_sd","avg"])
+  sd_st_grp_0 <- mean(df[df$group == 0 & df$type == "standardized" & 
       df$statistic == "est_sd","avg"])
   # rmse12 <- mean(rmse_grp_1,rmse_grp_2)
   # rmse_st12 <- mean(rmse_st_grp_1,rmse_st_grp_2)
@@ -415,12 +434,8 @@ summaryStats <- function(df) {
       sd_grp_2,sd_st_grp_2))
   names(stat_2) <- nms
   stat_2$group <- 2
-  stat_12 <- data.frame(cbind(mean(c(rmse_grp_1,rmse_grp_2)),
-        mean(c(rmse_st_grp_1,rmse_st_grp_2)),
-        mean(c(mean_grp_1,mean_grp_2)),
-        mean(c(mean_st_grp_1,mean_st_grp_2)),
-        mean(c(sd_grp_1,sd_grp_2)),
-        mean(c(sd_st_grp_1,sd_st_grp_2))))
+  stat_12 <- data.frame(cbind(rmse_grp_0,rmse_st_grp_0,mean_grp_0,mean_st_grp_0,
+      sd_grp_0,sd_st_grp_0))
   names(stat_12) <- nms
   stat_12$group <- 0
   
