@@ -1,0 +1,482 @@
+---
+title: "Simulation Studies of Test Equating"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(MplusAutomation)
+require(mirt)
+require(tidyr)
+require(ggplot2)
+require(psych)
+source("~/Research/Code/runMplus.R")
+source("~/Research/Code/extractVarNames.R")
+source("../Code/simulation_functions.R")
+```
+
+### Technical Decision Points
+
+- Simulation platform
+- Platform to estimate ability from simulated datasets
+  - Estimation method
+- Metric for comparing different simulation scenarios
+
+### Simulation Sanity Check
+
+- Should be able to recreate ability metric of simulated item-level dataset in a single sample 
+  - Flat Bland-Altmann plot - (estimated ability - true ability)/true ability
+    - Dispersion around 0 line consistent with expected standard error of measurement
+  - Simulation parameters
+    - 30 dichotomous items
+    - item difficulty equaly spaced from -3 to +3
+    - item discrimination all 2.0
+    - sample size = 500
+    - theta simulated from N(0,1)
+    
+```{r message=FALSE, echo=FALSE, warning=FALSE, include=FALSE, cache=TRUE}
+
+### Simulate item level dataset
+
+discr <- c(2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2)
+
+set.seed(4357)
+ds1 <- sim.poly.npl(nvar = 30 ,n = 500,low=-3,high=3,a=discr,
+        c=0,z=1,d=NULL, mu=0,sd=1,cat=2)
+
+diff <-  data.frame(ds1[["difficulty"]])
+names(diff) <- "difficulty"
+disc <-  data.frame(ds1[["discrimination"]])
+names(disc) <- "discrimination"
+
+
+t1 <- data.frame(ds1[["items"]])
+t2 <- data.frame(ds1[["theta"]])
+
+names(t2) <- "ability"
+
+t2 <- cbind(t2,t1)
+
+
+### Mplus code for simulation sanity check
+
+title <- "Simulated IRT Analysis"
+
+analysis <- "estimator = mlr;
+"
+
+output <- "sampstat;stdyx;svalues;"
+
+varsim2 <- c('V1','V2','V3','V4','V5','V6','V7','V8','V9','V10',
+            'V11','V12','V13','V14','V15','V16','V17','V18','V19','V20',
+            'V21','V22','V23','V24','V25','V26','V27','V28','V29','V30')
+
+varcatsim2 <- "
+categorical = v1-v30;
+"
+
+savedata <- "
+FILE = 'irt_sim_fscores_3.dat';
+SAVE = FSCORES;
+"
+
+model_sim_4 <- "
+cog by v1-v30@2;
+"
+
+for(i in 1:30){
+  if (i==1){
+    thresh <- paste("[",varsim2[1],"$1","@",diff[1,1]*disc[1,1],"];\n",sep="")
+  } else {
+    thresh <- paste(thresh,"[",varsim2[i],"$1","@",diff[i,1]*disc[i,1],"];\n",sep="")
+  }
+}
+
+model_sim_4 <- paste(model_sim_4,thresh,sep="\n")
+
+# Mplus EAP factor scores
+
+rdata <- t2
+modelout <- "../Analysis/irt_sim_mplus_eap.inp"
+
+mplobj <- mplusObject(TITLE = title, MODEL = model_sim_4, VARIABLE = varcatsim2, 
+        ANALYSIS = analysis, OUTPUT = output, SAVEDATA = savedata, 
+        rdata = rdata, usevariables = varsim2)
+res_irt_mplus_eap <- mplusModeler(mplobj,modelout=modelout,run=1,check=TRUE)
+
+
+fsc <- readModels("../Analysis/irt_sim_mplus_eap.out",what="savedata")$savedata
+
+t4 <- cbind(t2,fsc[,c("COG","COG_SE")])
+
+t4$resid <- t4$COG - t4$ability
+
+# Mplus plausible values factor scores
+
+savedata2 <- "
+FILE = 'irt_sim_fscores_pv.dat';
+SAVE = FSCORES(50,10);
+"
+modelout <- "../Analysis/irt_sim_mplus_pv.inp"
+
+analysis2 <- sub("mlr","bayes",analysis)
+
+mplobj2 <- mplusObject(TITLE = title, MODEL = model_sim_4, VARIABLE = varcatsim2, 
+        ANALYSIS = analysis2, OUTPUT = output, SAVEDATA = savedata2, 
+        rdata = rdata, usevariables = varsim2)
+res_irt_mplus_pv <- mplusModeler(mplobj2,modelout=modelout,run=1,check=TRUE)
+
+
+# res_irt_sim_4 <- runMplus(TITLE = title, MODEL = model_sim_4, usevariables = varsim2,
+#                           rdata=rdata, OUTPUT = output, modelout = modelout,
+#                           VARIABLE = varcatsim2, ANALYSIS=analysis2, delete_data=FALSE,
+#                           SAVEDATA=savedata2)
+rm(res_irt_mplus_pv)
+
+fsc <- readModels("../Analysis/irt_sim_mplus_pv.out",what="savedata")$savedata
+
+t5 <- cbind(t2,fsc[,c("COG.Mean","COG.Median","COG.Standard.Deviation")])
+
+t5$resid <- t5$COG.Median - t5$ability
+
+
+
+### mirt simulation and estimation
+
+theta1 <- rnorm(500,0,1)
+dataset1 <- simdata(disc, diff, 500, Theta=as.matrix(theta1),  itemtype = '2PL')
+dataset1 <- data.frame(cbind(theta1,dataset1))
+names(dataset1) <- sub("theta1","ability",names(dataset1))
+
+
+mdl <- mirt.model('cog = 1-30')
+
+
+mcal_par <- mirt(dataset1[,2:31],mdl,pars='values')
+
+mcal_par[mcal_par$name == "a1","value"] <- 2.0
+mcal_par[mcal_par$name == "a1","est"] <- FALSE
+mcal_par[mcal_par$name == "d","value"] <- diff
+mcal_par[mcal_par$name == "d","est"] <- FALSE
+mcal_par[mcal_par$item == "GROUP","est"] <- TRUE
+
+
+mcal <- mirt(dataset1[,2:31],mdl,itemtype='2PL',pars=mcal_par)
+
+# fsc <- fscores(mcal,full.scores=TRUE, plausible.type="MH",plausible.draws=50)
+# fsc_med <- data.frame(list(fsc[[5]],fsc[[10]],fsc[[15]],fsc[[20]],fsc[[25]],fsc[[30]],fsc[[35]],
+#     fsc[[40]],fsc[[45]],fsc[[50]]))
+# names(fsc_med) <- c("D1","D2","D3","D4","D5","D6","D7","D8","D9","D10")
+# fsc_med$ability_est <- apply(fsc_med,1,median)
+
+fsc <- data.frame(fscores(mcal,full.scores=TRUE, method="plausible"))
+names(fsc) <- "ability_est"
+t6 <- cbind(dataset1,fsc)
+
+t6$resid <- t6$ability_est - t6$ability
+
+
+
+fsc <- data.frame(fscores(mcal,full.scores=TRUE, method="EAP"))
+names(fsc) <- "ability_est"
+t7 <- cbind(dataset1,fsc)
+
+
+t7$resid <- t7$ability_est - t7$ability
+
+
+fsc <- data.frame(fscores(mcal,full.scores=TRUE, method="ML"))
+names(fsc) <- "ability_est"
+t8 <- cbind(dataset1,fsc)
+
+t8$ability_est <- ifelse(t8$ability_est %in% c(-Inf,Inf),NA,
+    t8$ability_est)
+
+
+t8$resid <- t8$ability_est - t8$ability
+
+
+
+
+
+```
+
+```{r message=FALSE, echo=FALSE, warning=FALSE, include=FALSE}
+
+item_list_1 <- c("Item_1","Item_2","Item_3","Item_4","Item_5","Item_6","Item_7",
+                 "Item_8","Item_9","Item_10","Item_11","Item_12","Item_13","Item_14",
+                 "Item_15","Item_16","Item_17","Item_18","Item_19","Item_20","Item_21",
+                 "Item_22","Item_23","Item_24","Item_25","Item_26",
+                 "Item_27","Item_28","Item_28","Item_29","Item_30")
+item_list_2 <- c("Item_1","Item_2","Item_3","Item_4","Item_5","Item_6","Item_7",
+                 "Item_8","Item_9","Item_10","Item_11","Item_12","Item_13","Item_14",
+                 "Item_15","Item_16","Item_17","Item_18","Item_19","Item_20","Item_21",
+                 "Item_22","Item_23","Item_24","Item_25","Item_26",
+                 "Item_27","Item_28","Item_28","Item_29","Item_30")
+
+
+tinfo <- infoSim(seed=21589,n_group=2,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
+    n_samp=500,pars=mcal_par,itms1=item_list_1,itms2=item_list_2)
+
+tinfo2 <- tinfo %>% gather(key,value,c("info_1","info_2"))
+tinfo2$key <- ifelse(tinfo2$key %in% "info_1","Group 1","Group 2")
+
+```
+
+### Test Information of Simulated Sanity Check Test
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+
+ggplot(data=tinfo2,aes(x=ability, y=value, color=key)) + geom_line(lwd=1) + xlab("Ability") +
+  ylab("Information")
+
+```
+
+ 
+### Sanity Check 1 - R psych simulation, ability estimated with Mplus, factor score method = EAP
+ability_est mean = `r mean(t4$COG)`   
+ability_est sd = `r sd(t4$COG)`   
+rmse = `r sqrt(mean(t4$resid^2))`   
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+# plot(t4$ability,t4$COG)
+# plot(t4$ability,t4$resid)
+# abline(lm(t4$resid ~ t4$ability))
+# 
+
+ggplot(data=t4,aes(x=ability,y=resid)) + geom_point() + geom_smooth(method="lm")
+
+```
+
+### Sanity Check 2 - R psych simulation, ability estimated with Mplus, factor score method = plausible values
+ability_est mean = `r mean(t5$COG.Median)`   
+ability_est sd = `r sd(t5$COG.Median)`   
+rmse = `r sqrt(mean(t5$resid^2))`   
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+# plot(t4$ability,t4$COG)
+# plot(t4$ability,t4$resid)
+# abline(lm(t4$resid ~ t4$ability))
+# 
+
+ggplot(data=t5,aes(x=ability,y=resid)) + geom_point() + geom_smooth(method="lm")
+
+```
+
+### Sanity Check 3 - R mirt simulation and estimation of ability, factor score method = plausible values
+ability_est mean = `r mean(t6$ability_est)`   
+ability_est sd = `r sd(t6$ability_est)`   
+rmse = `r sqrt(mean(t6$resid^2))`   
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+# plot(t4$ability,t4$COG)
+# plot(t4$ability,t4$resid)
+# abline(lm(t4$resid ~ t4$ability))
+# 
+
+ggplot(data=t6,aes(x=ability,y=resid)) + geom_point() + geom_smooth(method="lm")
+
+```
+
+### Sanity Check 4 - R mirt simulation and estimation of ability, factor score method = EAP
+ability_est mean = `r mean(t7$ability_est)`   
+ability_est sd = `r sd(t7$ability_est)`   
+rmse = `r sqrt(mean(t7$resid^2))`   
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+# plot(t4$ability,t4$COG)
+# plot(t4$ability,t4$resid)
+# abline(lm(t4$resid ~ t4$ability))
+# 
+
+ggplot(data=t7,aes(x=ability,y=resid)) + geom_point() + geom_smooth(method="lm")
+
+```
+  
+### Sanity Check 5 - R mirt simulation and estimation of ability, factor score method = ML
+ability_est mean = `r mean(t8$ability_est,na.rm=TRUE)`   
+ability_est sd = `r sd(t8$ability_est,na.rm=TRUE)`   
+rmse = `r sqrt(mean(t8$resid^2,na.rm=TRUE))`   
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+# plot(t4$ability,t4$COG)
+# plot(t4$ability,t4$resid)
+# abline(lm(t4$resid ~ t4$ability))
+# 
+
+ggplot(data=t8,aes(x=ability,y=resid)) + geom_point() + geom_smooth(method="lm")
+
+```
+
+### Recommendations
+
+- R mirt for simulation and estimation
+  - Common platform for both components
+  - Accomodates dichotomous and polytomous items
+- RMSE as metric for comparing scenarios
+- Ability score estimation method has tradeoffs
+  - plausible values best in reproducing true ability metric
+    - greater dispersion around true ability (RMSE)
+  - EAP has low dispersion around true ability
+    - more shrinkage of estimated ability metric, though may be acceptable
+  - ML reproduces metric and has low dispersion around true ability
+    - estimated abilityis not defined for cases with all correct or all incorrect responses
+  -Should we consider transforming estimated ability scale to 0,1 metric?
+  
+ 
+ 
+```{r message=FALSE, echo=FALSE, warning=FALSE, include=FALSE, cache=TRUE}
+ 
+ ### mirt calibration of tics
+
+# input PITCH tics dataset
+tics <- read.csv("../Data/PITCH-response-data-fhl.csv")
+
+# HRS items
+vars <- c('UBAK','UDAT','UDAY','UDWR','UIWR','UMON','UNM1','UNM2','UNM5','UNM6',
+     'USUB','UYER')
+# MHAS items
+varsm <- c("UDAY","UFCO2","UFRE1","UMON","UVSC","UWD","UWR1","UWR2","UWR3","UYER")
+
+# select HRS items and persons
+hrs <- tics[tics$study_name_short %in% c("HRS_CODA_W6","HRS_W6"),vars]
+hrs$n_itm <- apply(hrs,1,function(x) sum(!is.na(x)))
+hrs <- hrs[!hrs$n_itm ==0,]
+
+m1hrs <- mirt.model('cog = 1-12') # creates mirt model object
+hrs_par <- mirt(hrs[,1:12],m1hrs,pars='values') # generates item parameters file that can be edited to guide further analyses
+
+hrscal <- mirt(hrs[,1:12],m1hrs,pars=hrs_par) # IRT calibration
+# coef(hrscal)
+
+m2hrs <- mirt.model('cog = 1-11')
+
+# HRS calibration excluding delayed word recall
+hrs_par_0dr <- mirt(hrs[,c(1:3,5:12)],m2hrs,pars='values')
+hrscal_0dr <- mirt(hrs[,c(1:3,5:12)],m2hrs,pars=hrs_par_0dr)
+
+# HRS calibration excluding immediate word recall
+hrs_par_0ir <- mirt(hrs[,c(1:4,6:12)],m2hrs,pars='values',technical=list(removeEmptyRows=TRUE))
+hrscal_0ir <- mirt(hrs[,c(1:4,6:12)],m2hrs,pars=hrs_par_0ir,technical=list(removeEmptyRows=TRUE))
+# coef(hrscal_0ir)
+
+#  mirt calibration of MHAS 
+
+mex <- tics[tics$study_name_short %in% c("MHAS_W1","MHAS_W2"),varsm]
+mex$n_itm <- apply(mex,1,function(x) sum(!is.na(x)))
+mex <- mex[!mex$n_itm ==0,]
+
+m1mex <- mirt.model('cog = 1-10')
+mex_par <- mirt(mex[,1:10],m1mex,pars='values')
+
+mexcal <- mirt(mex[,1:10],m1mex,pars=mex_par)
+# coef(mexcal)
+
+#  mirt calibration of combined HRS and MHAS 
+
+hrme <- tics[tics$study_name_short %in% c("HRS_CODA_W6","HRS_W6") |
+    tics$study_name_short %in% c("MHAS_W1","MHAS_W2"),union(vars,varsm)]
+hrme$n_itm <- apply(hrme,1,function(x) sum(!is.na(x)))
+hrme <- hrme[!hrme$n_itm == 0,]
+
+m1hrme <- mirt.model('cog = 1-19')
+hrme_par <- mirt(hrme[,1:19],m1hrme,pars='values')
+
+hrmecal <- mirt(hrme[,1:19],m1hrme,pars=hrme_par)
+# coef(hrmecal)
+
+
+```
+
+### HRS TICS Information (immediate and delayed word list recall included)
+info_all - all items including immediated word recall and delayed word recall are included   
+info_no_dr - all items except delayed word recall are included   
+info_no_ir - all items except immediated word recall are included   
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+
+info1 <- infoCalc(hrscal)
+info2 <- infoCalc(hrscal_0dr)
+info3 <- infoCalc(hrscal_0ir)
+
+info <- merge(info1,info2,by="ability")
+info <- merge(info,info3,by="ability")
+names(info) <- c("ability","info_all","info_no_dr","info_no_ir")
+inf_comb <- info %>% gather(key,information,c("info_all","info_no_dr","info_no_ir"))
+
+ggplot(data=inf_comb,aes(x=ability,y=information,col=key)) + geom_line(lwd=1)
+
+```
+
+Note. Information values for all items included in model over estimate true information values due to unidimensionality and local independence assumptions not being met in this model.
+
+### MHAS TICS Information (all items included)
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+
+info1 <- infoCalc(mexcal)
+
+ggplot(data=info1,aes(x=ability,y=information)) + geom_line(lwd=1)
+
+```
+
+Note. Information values for all items included in model over estimate true information values due to unidimensionality and local independence assumptions not being met in this model.
+
+### Combined HRS and MHAS TICS Information (all items included)
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+
+info1 <- infoCalc(hrmecal)
+
+ggplot(data=info1,aes(x=ability,y=information)) + geom_line(lwd=1)
+
+```
+
+Note. Information values for all items included in model over estimate true information values due to unidimensionality and local independence assumptions not being met in this model.
+
+### HRS TICS Item Parameters (all items included)
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+print(coef(hrscal))
+```
+
+
+### MHAS TICS Item Parameters (all items included)
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+print(coef(mexcal))
+```
+
+### Combined HRS and MHAS TICS Item Parameters (all items included)
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+print(coef(hrmecal))
+```
+
+
+### Simulate item response dataset using item parameters from combined HRS and MHAS data
+
+```{r message=FALSE, echo=TRUE, warning=FALSE}
+# This chunk show code to create one simulated item response dataset based on empirically
+# estimated parameters from and IRT analysis of the combined HRS and MHAS samples
+theta1 <- data.frame(rnorm(500,0.5,1))
+  names(theta1) <- "theta1"
+  theta1$group <- "HRS"
+  theta2 <- data.frame(rnorm(500,-0.5,1))
+  names(theta2) <- "theta1"
+  theta2$group <- "MHAS"
+  theta1 <- rbind(theta1,theta2)
+  
+
+  ds2 <- data.frame(simdata(N=1000, model=hrmecal, Theta=as.matrix(theta1$theta1)))
+  
+  ds2 <- cbind(theta1,ds2)
+ 
+  m1hrme <- mirt.model('cog = 1-19')
+  hm_par <- mirt(ds2[,3:21],m1hrme,pars='values')
+
+  hmcal <- mirt(ds2[,3:21],m1hrme,pars=hm_par)
+  # coef(hmcal)
+ 
+```
