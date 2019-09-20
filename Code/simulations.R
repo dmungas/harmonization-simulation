@@ -100,7 +100,7 @@ scen_1 <- equateSim(seed=21589,grp_mean=c(mean_hrs,mean_mhas),
     pars=hrme_par,n_rep=100,itms1=items,itms2=items,fsc_method="EAP",
     mod_res_obj=hrmecal)
 
-sumstat1 <- summaryStats(scen_1)
+sumstat1 <- summaryStats(scen_1[["summary"]])
 
 ### end scenario 1
 
@@ -111,7 +111,7 @@ scen_2 <- equateSim(seed=21589,grp_mean=c(mean_hrs,mean_mhas),
       pars=hrme_par,n_rep=100,itms1=vars,itms2=varsm,fsc_method="EAP",
       mod_res_obj=hrmecal)
 
-sumstat2 <- summaryStats(scen_2)
+sumstat2 <- summaryStats(scen_2[["summary"]])
 
 ### end scenario 2
 
@@ -124,7 +124,7 @@ scen_3 <- equateSim(seed=21589,grp_mean=c(mean_hrs,mean_mhas),
                     pars=hrme_par,n_rep=100,itms1=vars,itms2=itms2,fsc_method="EAP",
                     mod_res_obj=hrmecal)
 
-sumstat3 <- summaryStats(scen_3)
+sumstat3 <- summaryStats(scen_3[["summary"]])
 
 ### end scenario 3
 
@@ -136,7 +136,7 @@ scen_4 <- equateSim(seed=21589,grp_mean=c(mean_hrs,mean_mhas),
                     pars=hrs_par,n_rep=100,itms1=vars,itms2=vars,fsc_method="EAP",
                     mod_res_obj=hrscal)
 
-sumstat4 <- summaryStats(scen_4)
+sumstat4 <- summaryStats(scen_4[["summary"]])
 
 ### end scenario 4
 
@@ -146,23 +146,12 @@ sumstat4 <- summaryStats(scen_4)
 scen_5 <- equateSim(seed=21589,grp_mean=c(mean_hrs,mean_mhas),
                     grp_sd=c(sd_hrs,sd_mhas),n_samp=500,n_rep_theta=1,n_itm=length(varsm),
                     pars=mex_par,n_rep=100,itms1=varsm,itms2=varsm,fsc_method="EAP",
-                    mod_res_obj=mexcal)
+                    mod_res_obj=mexcal,save_sims=TRUE)
 
-sumstat5 <- summaryStats(scen_5)
+sumstat5 <- summaryStats(scen_5[["summary"]])
 
-### end scenario 4
+scen_5_data <- scen_5[["datasets"]]
 
-
-
+### end scenario 5
 
 # ---------------------------------End Scenarios -------------------------------
-
-
-
-result = tryCatch({
-  log(adc)
-}, warning = function(w) {
-  return(print("warning"))
-}, error = function(e) {
-  return(print("error"))
-})

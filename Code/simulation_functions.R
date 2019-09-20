@@ -34,18 +34,22 @@
 #   mod_res_obj - mirt model results object from mirt analysis. This must
 #     be from the same mirt model as pars.
 
-# equateSim returns a dataframe that has summary statistics (rmse, mean 
-# estimated ability, sd estimated ability) for each group and each simulated 
-# sample of true abilities (n_rep), and ge]nerates these statistics for raw 
-# estimated abilities and for estimated abilities on a metric transformed to 
+# equateSim returns a list with 2 elements:
+# 1. "summary" - a dataframe that has summary statistics (rmse, mean
+# estimated ability, sd estimated ability) for each group and each simulated
+# sample of true abilities (n_rep). These statistics are produced for raw
+# estimated abilities and for estimated abilities on a metric transformed to
 # match the true ability metric.
+# 2. "datasets" (if save_sims=TRUE) - a long format dataframe that includes original and estimated
+# theta scores, group assignment, sample number, and rep_theta number 
 
 equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
       n_samp=500,n_rep_theta=1,n_itm=30,pars=mcal_pars,n_rep=100,
       itms1=item_list_1,itms2=item_list_2,fsc_method="EAP",
-      mod_res_obj=NULL) {
+      mod_res_obj=NULL,save_sims=FALSE) {
   require(dplyr)
   require(tidyr)
+  require(mirt)
   extractDiffMatrix <- function(pars){
     diff1 <- pars[grepl("d+",pars$name),c("item","name","value")]
     diff1$item <- as.character(diff1$item)
@@ -84,7 +88,7 @@ equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
   model <- mirt.model(paste("cog = 1-",n_itm,sep=""))
   set.seed(seed)
   j <- 0
-  while (j <= 99) {
+  while (j < n_rep) {
     j <- j+1
     time <- Sys.time()
     theta1 <- data.frame(rnorm(n_samp,grp_mean[1],grp_sd[1]))
@@ -108,9 +112,6 @@ equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
           Theta=as.matrix(theta1$theta1)))
       }
  
-      ds2 <- data.frame(simdata(model=hrscal,N=500,
-                                Theta=as.matrix(theta1$theta1)))
-      
       names(ds2) <- unique(pars[!pars$item == "GROUP","item"])
       # ds2[1:n_samp,"group"] <- 1
       # ds2[(n_samp+1):nrow(ds2),"group"] <- 2
@@ -132,6 +133,7 @@ equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
     }
 
     sim_summ <- list()
+    dataset <- list()
     for (i in 1:length(ds)){
       # capture errors due to not all response option occurring in simulated dataset
       pars1 <- tryCatch({
@@ -178,10 +180,21 @@ equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
           mean(t6$ability) # linear equating to true ability metric
         
         t6$resid_st <- t6$abil_est_st - t6$ability
+        t6$sample <- j
+        t6$rep_theta <- i
         
         # plot(t6$resid ~ t6$ability)
         
         sim_summ[[i]] <- t6[,c("ability","ability_est","resid","abil_est_st","resid_st","group")]
+        
+        if (save_sims == TRUE) {
+          if (j==1 & i == 1) {
+            sim_data <- t6
+          } else {
+            sim_data <- rbind(sim_data,t6)
+          }
+        }
+        
       } else {
         j <- j-1
       }
@@ -239,7 +252,15 @@ equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
   } else {
     stat_summ$avg <- apply(stat_summ[,1:n_rep],1,mean)
   }
-  return(stat_summ)
+  sim_results <- list()
+  sim_results[["summary"]] <- stat_summ
+  if (save_sims == TRUE) {
+    vnms <- c("ability","ability_est","resid","abil_est_st","resid_st",
+        "group","sample","rep_theta")
+    itnms <- names(sim_data[!names(sim_data) %in% vnms])
+    sim_results[["datasets"]] <- sim_data[,c(vnms,itnms)]
+  } 
+  return(sim_results)
 }
 
 
