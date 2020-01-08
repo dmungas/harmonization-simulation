@@ -26,7 +26,6 @@
 #       mcal_par <- mirt(df,mdl,pars='values') where df is a dataframe with
 #         item response data and mdl is a mirt model object. The returned file 
 #         (mcal_par in this example) can be edited to change item parameters.
-#   n_rep - number of simulated samples of true ability values (default=100)
 #   itms1 - list of items available for group 1 (default=item_list_1)
 #   itms2 - list of items available for group 2 (default=item_list_2)
 #   fsc_method - mirt method for calculating estimated ability values 
@@ -189,7 +188,7 @@ equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
         sim_summ[[i]] <- t6[,c("ability","ability_est","resid","abil_est_st","resid_st","group")]
         
         if (save_sims == TRUE) {
-          if (j==1 & i == 1) {
+          if (j==1 & i==1) {
             sim_data <- t6
           } else {
             sim_data <- rbind(sim_data,t6)
@@ -205,7 +204,7 @@ equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
     # abil <- data.frame(matrix(ncol = length(sim_summ), nrow = 500))
     # abil_est <- data.frame(matrix(ncol = length(sim_summ), nrow = 500))
     # res <- data.frame(matrix(ncol = length(sim_summ), nrow = 500))
-    stat <- data.frame(matrix(nrow = 12,ncol = length(sim_summ)))
+    stat <- data.frame(matrix(nrow = 18,ncol = length(sim_summ)))
     if (length(sim_summ) > 0) {
       for (i in 1:length(sim_summ)) {
         nm <- paste("dset_",i,sep="")
@@ -275,7 +274,7 @@ equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
 # infoSim is a function that uses R mirt item response theory (IRT) methods
 # to: 1) simulate an item level dataset based on item parameters, 2) perform an IRT
 # calibrations on the simulated dataset, and 3) calculate test information values
-# across a range of ability values. It estimates test innformation for two group 
+# across a range of ability values. It estimates test information for two groups 
 # that can have different distributions of ability, and different items can be 
 # used for the two groups.
 
@@ -376,7 +375,7 @@ infoCalc <- function(mirt_mod_obj) {
 #   df - data.frame of summary statistics for each simulated dataset returned
 #     by equateSim
 #     
-# summaryStats returns a dataframe withthe means across simulated datasets of 
+# summaryStats returns a dataframe with the means across simulated datasets of 
 # rmse, rmse_st, mean, mean_st, and sd sd_st for each group as well as the 
 # simple average of both groups. It includes a group variable (Group 1,
 # Group 2, Combined) 
