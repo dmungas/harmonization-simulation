@@ -106,10 +106,10 @@ row.names(mean_sd) <- c("Group 1","Group 2","Combined")
 
 items <- union(vars,varsm)
 
-scen_1 <- equateSim(seed=21589,grp_mean=c(mean_hrs,mean_mhas),
-    grp_sd=c(sd_hrs,sd_mhas),n_samp=500,n_rep_theta=1,n_itm=length(items),
-    pars=hrme_par,n_rep=100,itms1=items,itms2=items,fsc_method="EAP",
-    mod_res_obj=hrmecal)
+scen_1 <- equateSim(seed=21589,grp_mean=c(0,-0.24),
+    grp_sd=c(sd_hrs,sd_mhas),ref_grp=1,n_rep_theta=1,n_itm=length(items),
+    pars=hrme_par,n_rep=500,itms1=items,itms2=items,fsc_method="EAP",
+    mod_res_obj=hrmecal,n_samp1=500,n_samp2=500)
 
 sumstat1 <- summaryStats(scen_1[["summary"]])
 
@@ -117,10 +117,10 @@ sumstat1 <- summaryStats(scen_1[["summary"]])
 
 ### scenario 2 - UMON. UDAY, UYER as linking items, actual items in HRS and MHAS
 
-scen_2 <- equateSim(seed=21589,grp_mean=c(mean_hrs,mean_mhas),
-      grp_sd=c(sd_hrs,sd_mhas),n_samp=500,n_rep_theta=1,n_itm=length(items),
+scen_2 <- equateSim(seed=21589,grp_mean=c(0,-0.24),
+      grp_sd=c(sd_hrs,sd_mhas),ref_grp=1,n_rep_theta=1,n_itm=length(items),
       pars=hrme_par,n_rep=500,itms1=vars,itms2=varsm,fsc_method="EAP",
-      mod_res_obj=hrmecal)
+      mod_res_obj=hrmecal,n_samp1=500,n_samp2=500)
 
 sumstat2 <- summaryStats(scen_2[["summary"]])
 
@@ -130,10 +130,10 @@ sumstat2 <- summaryStats(scen_2[["summary"]])
 
 itms2 <- c(varsm,"UIWR")
 
-scen_3 <- equateSim(seed=21589,grp_mean=c(mean_hrs,mean_mhas),
-                    grp_sd=c(sd_hrs,sd_mhas),n_samp=500,n_rep_theta=1,n_itm=length(items),
+scen_3 <- equateSim(seed=21589,grp_mean=c(0,-0.24),
+                    grp_sd=c(sd_hrs,sd_mhas),ref_grp=1,n_rep_theta=1,n_itm=length(items),
                     pars=hrme_par,n_rep=500,itms1=vars,itms2=itms2,fsc_method="EAP",
-                    mod_res_obj=hrmecal)
+                    mod_res_obj=hrmecal,n_samp1=500,n_samp2=500)
 
 sumstat3 <- summaryStats(scen_3[["summary"]])
 
@@ -142,10 +142,10 @@ sumstat3 <- summaryStats(scen_3[["summary"]])
 ### scenario 4 - HRS Items in both studies
 
 
-scen_4 <- equateSim(seed=21589,grp_mean=c(mean_hrs,mean_mhas),
-                    grp_sd=c(sd_hrs,sd_mhas),n_samp=500,n_rep_theta=1,n_itm=length(vars),
+scen_4 <- equateSim(seed=21589,grp_mean=c(mean_hrs,0,-0.24),
+                    grp_sd=c(sd_hrs,sd_mhas),ref_grp=1,n_rep_theta=1,n_itm=length(vars),
                     pars=hrs_par,n_rep=500,itms1=vars,itms2=vars,fsc_method="EAP",
-                    mod_res_obj=hrscal)
+                    mod_res_obj=hrscal,n_samp1=500,n_samp2=500)
 
 sumstat4 <- summaryStats(scen_4[["summary"]])
 
@@ -154,10 +154,10 @@ sumstat4 <- summaryStats(scen_4[["summary"]])
 ### scenario 5 - MHAS Items in both studies
 
 
-scen_5 <- equateSim(seed=21589,grp_mean=c(mean_hrs,mean_mhas),
-                    grp_sd=c(sd_hrs,sd_mhas),n_samp=500,n_rep_theta=1,n_itm=length(varsm),
+scen_5 <- equateSim(seed=21589,grp_mean=c(0,-0.24),
+                    grp_sd=c(sd_hrs,sd_mhas),ref_grp=1,n_rep_theta=1,n_itm=length(varsm),
                     pars=mex_par,n_rep=500,itms1=varsm,itms2=varsm,fsc_method="EAP",
-                    mod_res_obj=mexcal,save_sims=TRUE)
+                    mod_res_obj=mexcal,n_samp1=500,n_samp2=500)
 
 sumstat5 <- summaryStats(scen_5[["summary"]])
 
@@ -174,20 +174,75 @@ scen_5_data <- scen_5[["datasets"]]
 #   geom_point() + geom_smooth(method = "loess")
 
 
-### scenario 6 - UMON. UDAY, UYER as linking items, actual items in HRS and MHAS
+### scenario 6 -  UDAY as linking item
 
 
 vars6 <- vars[!vars %in% c("UMON",'UYER')]
 varsm6 <- varsm[!varsm %in% c("UMON",'UYER')]
 
-scen_6 <- equateSim(seed=21589,grp_mean=c(mean_hrs,mean_mhas),
-                    grp_sd=c(sd_hrs,sd_mhas),n_samp=500,n_rep_theta=1,n_itm=length(items),
+scen_6 <- equateSim(seed=21589,grp_mean=c(0,-0.24),
+                    grp_sd=c(sd_hrs,sd_mhas),ref_grp=1,n_rep_theta=1,n_itm=length(items),
                     pars=hrme_par,n_rep=500,itms1=vars,itms2=varsm6,fsc_method="EAP",
-                    mod_res_obj=hrmecal)
+                    mod_res_obj=hrmecal,n_samp1=500,n_samp2=500)
 
 sumstat6 <- summaryStats(scen_6[["summary"]])
 
 ### end scenario 6
+
+### scenario 7 - UIWR as linking item, MHAS without UMON UDAY UYER
+
+varsm7 <- c(varsm[!varsm %in% c("UMON",'UYER','UDAY')],'UIWR')
+
+
+scen_7 <- equateSim(seed=21589,grp_mean=c(0,-0.24),
+                    grp_sd=c(sd_hrs,sd_mhas),ref_grp=1,n_rep_theta=1,n_itm=length(items),
+                    pars=hrme_par,n_rep=500,itms1=vars,itms2=varsm7,fsc_method="EAP",
+                    mod_res_obj=hrmecal,n_samp1=500,n_samp2=500)
+
+scen_8 <- equateSim(seed=21589,grp_mean=c(0,-0.24),
+                    grp_sd=c(sd_hrs,sd_mhas),ref_grp=1,n_rep_theta=1,n_itm=length(items),
+                    pars=hrme_par,n_rep=500,itms1=vars8,itms2=varsm8,fsc_method="EAP",
+                    mod_res_obj=hrmecal,n_samp1=500,n_samp2=500)
+
+sumstat7 <- summaryStats(scen_7[["summary"]])
+
+### end scenario 7
+
+### scenario 8 - UIWR as linking item, HRS without UMON UDAY UYER
+
+vars8 <- vars[!vars %in% c("UMON",'UYER','UDAY')]
+varsm8 <- c(varsm,'UIWR')
+
+
+scen_8 <- equateSim(seed=21589,grp_mean=c(0,-0.24),
+                    grp_sd=c(sd_hrs,sd_mhas),ref_grp=1,n_rep_theta=1,n_itm=length(items),
+                    pars=hrme_par,n_rep=500,itms1=vars8,itms2=varsm8,fsc_method="EAP",
+                    mod_res_obj=hrmecal,n_samp1=500,n_samp2=500)
+
+# seed <- 21589
+# grp_mean <- c(0,-0.24)
+# grp_sd <- c(1,1.1)
+# ref_grp <- 1
+# n_rep_theta <- 1
+# n_itm <- length(items)
+# pars <- hrme_par
+# n_rep <- 500
+# itms1 <- vars8
+# itms2 <- varsm8
+# fsc_method <- "EAP"
+# mod_res_obj <- hrmecal
+# n_samp1 <- 500
+# n_samp2 <- 500
+
+# scen_8 <- equateSim(seed=21589,grp_mean=c(mean_hrs,mean_mhas),
+#                     grp_sd=c(sd_hrs,sd_mhas),n_samp=500,n_rep_theta=1,n_itm=length(items),
+#                     pars=hrme_par,n_rep=500,itms1=vars8,itms2=varsm8,fsc_method="EAP",
+#                     mod_res_obj=hrmecal)
+
+sumstat8 <- summaryStats(scen_8[["summary"]])
+
+### end scenario 7
+
 
 
 ### Merge summary statistics from scenarios
@@ -206,7 +261,27 @@ sumstat$scenario_label <- ifelse(sumstat$scenario == 1,"HRS+MHAS_all_shared",
       ifelse(sumstat$scenario == 4,"HRS_all_shared",
       ifelse(sumstat$scenario == 5,"MHAS_all_shared",
       ifelse(sumstat$scenario == 6,"HRS+HMAS_UDAY_shared",
-      NA))))))
+      ifelse(sumstat$scenario == 7,"HRS+MHAS_UIWR_shared_no_MHAS_dates",
+      ifelse(sumstat$scenario == 7,"HRS+MHAS_UIWR_shared_no_HRS_dates",
+      NA))))))))
+
+load("Results/simulation_results_2020-01-07-18-28.RData")
+
+sumstat7$scenario <- 7
+sumstat8$scenario <- 8
+
+sumstat7 <- rbind(sumstat7,sumstat8)
+sumstat7$scenario_label <- ifelse(sumstat7$scenario == 1,"HRS+MHAS_all_shared",
+      ifelse(sumstat7$scenario == 2,"HRS+MHAS_UMON_UDAY_UYER_shared",
+      ifelse(sumstat7$scenario == 3,"HRS+MHAS_UMON_UDAY_UYER_UIWR_shared",
+      ifelse(sumstat7$scenario == 4,"HRS_all_shared",
+      ifelse(sumstat7$scenario == 5,"MHAS_all_shared",
+      ifelse(sumstat7$scenario == 6,"HRS+HMAS_UDAY_shared",
+      ifelse(sumstat7$scenario == 7,"HRS+MHAS_UIWR_shared_no_MHAS_dates",
+      ifelse(sumstat7$scenario == 8,"HRS+MHAS_UIWR_shared_no_HRS_dates",
+      NA))))))))
+
+sumstat <- rbind(sumstat,sumstat7)
 
 save(sumstat,mean_sd,file=paste0("Results/simulation_results_",format(Sys.time(), '%Y-%m-%d-%H-%M'),".RData"))
 # saveRDS(sumstat,file=paste0("Results/sumstat_",format(Sys.time(), '%Y-%m-%d-%H-%M'),".rds"))

@@ -105,8 +105,8 @@ equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
     theta2$group <- 2
     theta1 <- rbind(theta1,theta2)
     
-    
-    #   hist(theta1)
+    #   table(theta1$group)
+    #   hist(theta1$theta1)
     
     ds <- list()
     for (i in 1:n_rep_theta){
@@ -130,13 +130,22 @@ equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
       
       for(group in 1:2) {
         if (group == 1) {
-          ds2[ds2$group == 1,!names(ds2) %in% c("theta1","group",paste0("Item_",itms1))] <- NA
+          ds2[ds2$group == 1,!names(ds2) %in% c("theta1","group",itms1)] <- NA
         } else {
-          ds2[ds2$group == 2,!names(ds2) %in% c("theta1","group",paste0("Item_",itms2))] <- NA
+          ds2[ds2$group == 2,!names(ds2) %in% c("theta1","group",itms2)] <- NA
         }
       }
+      # for(group in 1:2) {
+      #   if (group == 1) {
+      #     ds2[ds2$group == 1,!names(ds2) %in% c("theta1","group",paste0("Item_",itms1))] <- NA
+      #   } else {
+      #     ds2[ds2$group == 2,!names(ds2) %in% c("theta1","group",paste0("Item_",itms2))] <- NA
+      #   }
+      # }
       ds[[i]] <- ds2
     }
+    
+    # t1 <- ds[[1]]
     
     sim_summ <- list()
     dataset <- list()
@@ -153,6 +162,8 @@ equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
         return("error")
       })
       
+      # t1 <- select(ds[[i]], names(ds[[i]])[3:(n_itm+2)])
+      
       pars2 <- tryCatch({
         # This gets the parameter structure for the model when applied to the reference group (if applicable) 
         # and saves it as pars2
@@ -161,17 +172,13 @@ equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
           mirt(select(ds[[i]], names(ds[[i]])[3:(n_itm+2)]),model=model,pars='values')
         } else if(ref_grp == 1) {
           # Reference group 1
-          mirt(select(filter(ds[[i]], group == ref_grp), 
-                      paste0("Item_", itms1)),
-               model=mirt.model(paste0("cog = 1-",
-                                       length(itms1))),
+          mirt(select(filter(ds[[i]], group == ref_grp), itms1),
+               model=mirt.model(paste0("cog = 1-",length(itms1))),
                pars='values')
         }  else if(ref_grp == 2) {
           # Reference group 2
-          mirt(select(filter(ds[[i]], group == ref_grp), 
-                      paste0("Item_", itms2)),
-               model=mirt.model(paste0("cog = 1-",
-                                       length(itms2))),
+          mirt(select(filter(ds[[i]], group == ref_grp),itms2),
+               model=mirt.model(paste0("cog = 1-",length(itms2))),
                pars='values')
         } else {
           stop("Incorrectly specified reference group. ref_grp should be 0 for no reference group, 1 for group 1, or 2 for group 2.")
@@ -182,24 +189,28 @@ equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
         return("error")
       })
       
-      if(!(pars1 %in% c("error","warning")) & !(pars2 %in% c("error","warning"))) {
-        # If a reference group is selected, this runs the model only on the simulated reference group data/items
-        # to obtain difficulty and discrimination parameter estimates for the linking items 
+#      if(!(pars1 %in% c("error","warning")) & !(pars2 %in% c("error","warning")) &
+#         (nrow(pars1[pars1$item %in% link_itms,]) == nrow(pars2[pars2$item %in% link_itms,]))) {
+        # if(is.data.frame(pars1) & is.data.frame(pars2) &
+        #    (nrow(pars1[pars1$item %in% link_itms,]) == nrow(pars2[pars2$item %in% link_itms,]))) {        # If a reference group is selected, this runs the model only on the simulated reference group data/items
+        if(is.data.frame(pars1) & is.data.frame(pars2)){
+          cat("check 1 - pars1 and pars2 are dataframes\n")
+             if(nrow(pars1[pars1$item %in% link_itms,]) == 
+                nrow(pars2[pars2$item %in% link_itms,])){  
+               cat("check 2 - pars1 and pars2 linking items have the same number of parameters\n")
+               # If a reference group is selected, this runs the model only on the simulated reference group data/items
+            # to obtain difficulty and discrimination parameter estimates for the linking items 
         # that are later applied as constraints in the full sample.
         if(ref_grp == 1) {
           # Reference group 1
-          mcal_rg <- mirt(select(filter(ds[[i]], group == ref_grp), 
-                                 paste0("Item_", itms1)),
-                          model=mirt.model(paste0("cog = 1-",
-                                                  length(itms1))),
-                          pars=pars2)
+          mcal_rg <- mirt(select(filter(ds[[i]], group == ref_grp),itms1),
+              model=mirt.model(paste0("cog = 1-",length(itms1))),pars=pars2)
+          cat("calibration reference group = 1\n")
         } else if(ref_grp == 2) {
           # Reference group 2
-          mcal_rg <- mirt(select(filter(ds[[i]], group == ref_grp), 
-                                 paste0("Item_", itms2)),
-                          model=mirt.model(paste0("cog = 1-",
-                                                  length(itms2))),
-                          pars=pars2)
+          mcal_rg <- mirt(select(filter(ds[[i]], group == ref_grp),itms2),
+              model=mirt.model(paste0("cog = 1-",length(itms2))),pars=pars2)
+          cat("calibration reference group = 2\n")
         } else if(ref_grp != 0) {
           stop("Incorrectly specified reference group. ref_grp should be 0 for no reference group, 1 for group 1, or 2 for group 2.")
         }
@@ -207,19 +218,37 @@ equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
         if(ref_grp %in% 1:2) {
           # If parameter estimates were obtained for one of the reference groups,
           # constrain the linking item parameters here before estimating the models in the combined sample.
-          mcal_a <- select(data.frame(coef(mcal_rg, IRTpars = TRUE, simplify = TRUE)$items), starts_with("a"))[link_itms,]
-          mcal_b <- select(data.frame(coef(mcal_rg, IRTpars = TRUE, simplify = TRUE)$items), starts_with("b"))[link_itms,]
+          # mcal_a <- select(data.frame(coef(mcal_rg, IRTpars = FALSE, simplify = TRUE)$items), 
+          #       starts_with("a"))[link_itms,]
+          # mcal_b <- select(data.frame(coef(mcal_rg, IRTpars = FALSE, simplify = TRUE)$items), 
+          #       starts_with("b"))[link_itms,]
           
-          pars1$value[pars1$name == "a1" & pars1$item %in% paste0("Item_", link_itms)] <- mcal_a
-          pars1$est[pars1$name == "a1" & pars1$item %in% paste0("Item_", link_itms)] <- FALSE
-          pars1$value[pars1$name == "d" & pars1$item %in% paste0("Item_", link_itms)] <- mcal_b
-          pars1$est[pars1$name == "d" & pars1$item %in% paste0("Item_", link_itms)] <- FALSE
+          for (itm in link_itms) {
+            mcal_itm <- data.frame(coef(mcal_rg, IRTpars = FALSE, 
+                simplify=TRUE)$items)[itm,]
+            ncat <- length(grep("d[1-9]",names(mcal_itm)))
+            
+            pars1$value[pars1$name == "a1" & pars1$item %in% itm] <- mcal_itm[,"a1"]
+            for(catn in 1:ncat){
+              pars1$value[pars1$name == paste0("d",catn) & 
+                  pars1$item %in% itm] <- mcal_itm[,paste0("d",catn)]
+              pars1$est[pars1$name == paste0("d",catn) & 
+                  pars1$item %in% itm] <- FALSE
+            }
+          }
+          
+          
+          # pars1$value[pars1$name == "a1" & pars1$item %in% link_itms] <- mcal_a
+          # pars1$est[pars1$name == "a1" & pars1$item %in% link_itms] <- FALSE
+          # ## difficulty values not correctly assigned
+          # pars1$value[pars1$name == "d" & pars1$item %in% link_itms] <- mcal_b
+          # pars1$est[pars1$name == "d" & pars1$item %in% link_itms] <- FALSE
         }
         
         # Now run the mirt model with either the linking items unconstrained (no reference group)
         # or constrained (to the values estimated in the reference group) models
-        
         mcal <- mirt(ds[[i]][,3:(n_itm+2)],model=model,pars=pars1)
+        cat("calibration - final\n")
         
         # mcal <- mirt(ds[[i]][,3:(n_itm+2)],model,itemtype='2PL',pars=pars)
         #   coef(mcal)
@@ -269,9 +298,13 @@ equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
           } else {
             sim_data <- rbind(sim_data,t6)
           }
-        }
-        
+        } 
+        } else {
+               cat("check 3 - pars1 and pars2 linking items have differrent numbers of parameter\n")
+               j <- j-1
+          }
       } else {
+        cat("check 4 - pars1 or pars2 are not dataframes\n")
         j <- j-1
       }
     }
