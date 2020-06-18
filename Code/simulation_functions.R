@@ -300,7 +300,7 @@ equateSim <- function(seed=NULL,grp_mean=c(0.5,-0.5),grp_sd=c(1,1),
           }
         } 
         } else {
-               cat("check 3 - pars1 and pars2 linking items have differrent numbers of parameter\n")
+               cat("check 3 - pars1 and pars2 linking items have different numbers of parameter\n")
                j <- j-1
           }
       } else {

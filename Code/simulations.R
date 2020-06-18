@@ -33,14 +33,18 @@ hrs_par <- mirt(hrs[,vars],m1hrs,pars='values') # generates item parameters file
 
 hrscal <- mirt(hrs[,vars],m1hrs,pars=hrs_par) # IRT calibration
 # coef(hrscal)
+hrscal_inf <- infoCalc(hrscal)
+plot(hrscal_inf$ability,hrscal_inf$information)
+
 
 m2hrs <- mirt.model('cog = 1-11')
 
 # HRS calibration excluding delayed word recall
 hrs_par_0dr <- mirt(hrs[,vars[!vars %in% "UDWR"]],m2hrs,pars='values')
 hrscal_0dr <- mirt(hrs[,vars[!vars %in% "UDWR"]],m2hrs,pars=hrs_par_0dr)
-
-
+# coef(hrscal_0dr)
+hrs_0dr_inf <- infoCalc(hrscal_0dr)
+plot(hrs_0dr_inf$ability,hrs_0dr_inf$information)
 
 # HRS calibration excluding immediate word recall
 hrs_par_0ir <- mirt(hrs[,vars[!vars %in% "UIWR"]],m2hrs,pars='values',
@@ -122,7 +126,13 @@ scen_2 <- equateSim(seed=21589,grp_mean=c(0,-0.24),
       pars=hrme_par,n_rep=500,itms1=vars,itms2=varsm,fsc_method="EAP",
       mod_res_obj=hrmecal,n_samp1=500,n_samp2=500)
 
+scen_2a <- equateSim(seed=21589,grp_mean=c(0,-0.24),
+      grp_sd=c(sd_hrs,sd_mhas),ref_grp=1,n_rep_theta=1,n_itm=length(items),
+      pars=hrme_par,n_rep=500,itms1=vars,itms2=varsm,fsc_method="EAP",
+      mod_res_obj=hrmecal,n_samp1=5000,n_samp2=5000)
+
 sumstat2 <- summaryStats(scen_2[["summary"]])
+sumstat2a <- summaryStats(scen_2a[["summary"]])
 
 ### end scenario 2
 
@@ -219,20 +229,20 @@ scen_8 <- equateSim(seed=21589,grp_mean=c(0,-0.24),
                     pars=hrme_par,n_rep=500,itms1=vars8,itms2=varsm8,fsc_method="EAP",
                     mod_res_obj=hrmecal,n_samp1=500,n_samp2=500)
 
-# seed <- 21589
-# grp_mean <- c(0,-0.24)
-# grp_sd <- c(1,1.1)
-# ref_grp <- 1
-# n_rep_theta <- 1
-# n_itm <- length(items)
-# pars <- hrme_par
-# n_rep <- 500
-# itms1 <- vars8
-# itms2 <- varsm8
-# fsc_method <- "EAP"
-# mod_res_obj <- hrmecal
-# n_samp1 <- 500
-# n_samp2 <- 500
+seed <- 21589
+grp_mean <- c(0,-0.24)
+grp_sd <- c(1,1.1)
+ref_grp <- 1
+n_rep_theta <- 1
+n_itm <- length(items)
+pars <- hrme_par
+n_rep <- 500
+itms1 <- vars8
+itms2 <- varsm8
+fsc_method <- "EAP"
+mod_res_obj <- hrmecal
+n_samp1 <- 500
+n_samp2 <- 500
 
 # scen_8 <- equateSim(seed=21589,grp_mean=c(mean_hrs,mean_mhas),
 #                     grp_sd=c(sd_hrs,sd_mhas),n_samp=500,n_rep_theta=1,n_itm=length(items),
