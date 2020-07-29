@@ -39,14 +39,18 @@ hrs_par <- mirt(hrs[,vars],m1hrs,pars='values') # generates item parameters file
 hrscal <- mirt(hrs[,vars],m1hrs,pars=hrs_par) # IRT calibration
 # coef(hrscal)
 # coef(hrscal, IRTpars = TRUE)
+hrscal_inf <- infoCalc(hrscal)
+plot(hrscal_inf$ability,hrscal_inf$information)
+
 
 m2hrs <- mirt.model('cog = 1-11')
 
 # HRS calibration excluding delayed word recall
 hrs_par_0dr <- mirt(hrs[,vars[!vars %in% "UDWR"]],m2hrs,pars='values')
 hrscal_0dr <- mirt(hrs[,vars[!vars %in% "UDWR"]],m2hrs,pars=hrs_par_0dr)
-
-
+# coef(hrscal_0dr)
+hrs_0dr_inf <- infoCalc(hrscal_0dr)
+plot(hrs_0dr_inf$ability,hrs_0dr_inf$information)
 
 # HRS calibration excluding immediate word recall
 hrs_par_0ir <- mirt(hrs[,vars[!vars %in% "UIWR"]],m2hrs,pars='values',
@@ -213,7 +217,6 @@ scen_3 <- equateSim(seed = Seed,
                     log_file = "Logs/scenario3.txt",
                     verbose = FALSE, 
                     prog_bar = TRUE)
-
 sumstat3 <- summaryStats(scen_3[["summary"]])
 longstat3 <- scen_3[["summary"]]
 ds3 <- scen_3$datasets
@@ -252,7 +255,7 @@ ds4 <- scen_4$datasets
 ### scenario 5 - MHAS Items in both studies
 
 
-scen_5 <- equateSim(seed = Seed,
+<cen_5 <- equateSim(seed = Seed,
                     grp_mean = mus,
                     grp_sd = sigmas,
                     ref_grp = refGrp,
@@ -789,7 +792,6 @@ table(badat$w30_st, badat$scenario, badat$group) %>%
 
 table(badat$w30_st, badat$scenario) %>%
   prop.table(margin = 2)
-
 
 
 # sumstatt <- readRDS("Results/sumstat_2020-01-07-13-23.rds")

@@ -297,6 +297,7 @@ equateSim <- function(seed = NULL,
           } else {
             ds2[ds2$group == 2, !names(ds2) %in% c("theta1", "group", itms2)] <- NA
           }
+
         }
         ds[[i]] <- ds2
       }
