@@ -23,6 +23,12 @@ knit: (
       output_file = fileName) })
 ---
 
+# Simulation details
+
+This simulation generates factor scores by fixing the item parameter estimates to their sample-estimated values (obtained from group 1 for linking items and the combined sample for non-linking items) and by fixing the metric to $N(0, 1)$.
+
+9 scenarios are simulated. In the 9th, the estimates are manually overridden for two items to evaluate the performance of the harmonization when item difficulties are symmetrically distributed around 0.
+
 # Syntax
 
 ## Initialization
@@ -1792,37 +1798,7 @@ if(!exists("geom_flat_violin")) {
 }
 
 for(s in unique(longstat$type)){
-  longstat %>%
-    filter(type == s) %>%
-    filter(statistic == "est_mean") %>%
-    filter(group != 1) %>%
-    mutate(scenF = factor(scenario, levels = 1:9, labels = paste0("Scenario ", 1:9))) %>%
-    mutate(Group = factor(group, levels = c(0, 2), labels = c("Combined", "Group 2"))) %>%
-    ggplot(aes(x = fct_rev(scenF), y = avg, fill = scenF)) +
-    geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8, scale = "width") +
-    geom_point(aes(y = avg, color = scenF), 
-               position = position_jitter(width = .15), 
-               size = .5, alpha = 0.8) +
-    geom_boxplot(width = .1, outlier.shape = NA, alpha = 0.85, fill = "white", notch = TRUE) +
-    ylab("Mean Ability") +
-    guides(fill = FALSE) +
-    guides(color = FALSE) +
-    coord_flip() +
-    expand_limits(x = max(longstat$scenario) + 1) +
-    xlab("") +
-    facet_wrap(~Group, ncol = 2) +
-    scale_colour_brewer(name = "Scenario", palette = "Set1") +
-    scale_fill_brewer(name = "Scenario", palette = "Set1") +
-    geom_hline(data = thetalines2, aes(yintercept = value), 
-               lty = 2) +
-    theme_few() + 
-    theme(panel.background = element_rect(fill = "gray85"),
-          axis.text.x = element_text(size = 6))
-  
-  ggsave(file.path(plotPath, paste0("Figure_", s, "_2a.tiff")), width = 6.5, height = 4.5) # High quality for submission
-  ggsave(file.path(plotPath, paste0("Figure_", s, "_2a.png")), width = 6.5, height = 4.5) # For Word doc
-  
-  longstat %>%
+  rcp <- longstat %>%
     filter(type == s) %>%
     filter(statistic == "est_mean") %>%
     mutate(scenF = factor(scenario, levels = 1:9, labels = paste0("Scenario ", 1:9))) %>%
@@ -1848,63 +1824,10 @@ for(s in unique(longstat$type)){
     theme(panel.background = element_rect(fill = "gray85"),
           axis.text.x = element_text(size = 6))
   
-  ggsave(file.path(plotPath, paste0("Figure_", s, "_3a.tiff")), width = 6.5, height = 4.5) # High quality for submission
-  ggsave(file.path(plotPath, paste0("Figure_", s, "_3a.png")), width = 6.5, height = 4.5) # For Word doc
+  ggsave(file.path(plotPath, paste0("Figure_", s, "_.tiff")), width = 6.5, height = 4.5) # High quality for submission
+  ggsave(file.path(plotPath, paste0("Figure_", s, "_.png")), width = 6.5, height = 4.5) # For Word doc
   
-  longstat %>%
-    filter(type == s) %>%
-    filter(statistic == "est_mean") %>%
-    filter(group != 1) %>%
-    mutate(scenF = factor(scenario, levels = 1:9, labels = paste0("Scenario ", 1:9))) %>%
-    mutate(Group = factor(group, levels = c(0, 2), labels = c("Combined", "Group 2"))) %>%
-    ggplot(aes(x = fct_rev(scenF), y = avg, fill = scenF)) +
-    geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8, scale = "width") +
-    geom_point(aes(y = avg, color = scenF), 
-               position = position_jitter(width = .15), 
-               size = .5, alpha = 0.8) +
-    geom_boxplot(width = .1, outlier.shape = NA, alpha = 0.85, fill = "white", notch = TRUE) +
-    ylab("Mean Ability") +
-    guides(fill = FALSE) +
-    guides(color = FALSE) +
-    coord_flip() +
-    expand_limits(x = max(longstat$scenario) + 1) +
-    xlab("") +
-    facet_wrap(~Group, ncol = 2) +
-    scale_colour_brewer(name = "Scenario", palette = "Set1") +
-    scale_fill_brewer(name = "Scenario", palette = "Set1") +
-    theme_few() + 
-    theme(panel.background = element_rect(fill = "gray85"),
-          axis.text.x = element_text(size = 6))
-  
-  ggsave(file.path(plotPath, paste0("Figure_", s, "_2b.tiff")), width = 6.5, height = 4.5) # High quality for submission
-  ggsave(file.path(plotPath, paste0("Figure_", s, "_2b.png")), width = 6.5, height = 4.5) # For Word doc
-  
-  longstat %>%
-    filter(type == s) %>%
-    filter(statistic == "est_mean") %>%
-    mutate(scenF = factor(scenario, levels = unique(longstat$scenario), labels = paste0("Scenario ", unique(longstat$scenario)))) %>%
-    mutate(Group = factor(group, levels = 0:2, labels = c("Combined", "Group 1", "Group 2"))) %>%
-    ggplot(aes(x = fct_rev(scenF), y = avg, fill = scenF)) +
-    geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8, scale = "width") +
-    geom_point(aes(y = avg, color = scenF), 
-               position = position_jitter(width = .15), 
-               size = .5, alpha = 0.8) +
-    geom_boxplot(width = .1, outlier.shape = NA, alpha = 0.85, fill = "white", notch = TRUE) +
-    ylab("Mean Ability") +
-    guides(fill = FALSE) +
-    guides(color = FALSE) +
-    coord_flip() +
-    expand_limits(x = max(longstat$scenario) + 1) +
-    xlab("") +
-    facet_wrap(~Group, ncol = 3) +
-    scale_colour_brewer(name = "Scenario", palette = "Set1") +
-    scale_fill_brewer(name = "Scenario", palette = "Set1") +
-    theme_few() + 
-    theme(panel.background = element_rect(fill = "gray85"),
-          axis.text.x = element_text(size = 6))
-  
-  ggsave(file.path(plotPath, paste0("Figure_", s, "_3b.tiff")), width = 6.5, height = 4.5) # High quality for submission
-  ggsave(file.path(plotPath, paste0("Figure_", s, "_3b.png")), width = 6.5, height = 4.5) # For Word doc
+
 }
 
 ## Bland-Altman Plots
