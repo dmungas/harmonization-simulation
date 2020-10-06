@@ -27,7 +27,7 @@ knit: (
 
 This simulation generates factor scores by fixing the item parameter estimates to their sample-estimated values (obtained from group 1 for linking items and the combined sample for non-linking items) and by fixing the metric to $N(0, 1)$.
 
-9 scenarios are simulated. In the 9th, the estimates are manually overridden for two items to evaluate the performance of the harmonization when item difficulties are symmetrically distributed around 0.
+10 scenarios are simulated. In the 9th and 10th, the estimates are manually overridden for two items to evaluate the performance of the harmonization when item difficulties are symmetrically distributed around 0 (9) and to use good discrimination parameters (10).
 
 # Syntax
 
@@ -1077,20 +1077,28 @@ summaryStats <- function(df) {
   # Calculate relative bias in the unstandardized grand means.
   # Constant of 1 added for Group 1, whose population mean is 0.
   sumout$bias <- NA
+  sumout$bias_pct <- NA
+  
   for (i in 1:nrow(sumout)) {
-    constant <- ifelse(sumout$theta[i] == 0, 1, 0)
     sumout$bias[i] <-
-      ((sumout$mean[i] + constant) - (sumout$theta[i] + constant)) / abs(sumout$theta[i] + constant)
+      sumout$mean[i] - sumout$theta[i]
+    sumout$bias_pct[i] <-
+      (sumout$mean[i] - sumout$theta[i]) / abs(sumout$theta[i])
   }
+  
   
   # Calculate relative bias in the standardized grand means.
   # Constant of 1 added for Group 1, whose population mean is 0.
   sumout$bias_st <- NA
+  sumout$bias_pct_st <- NA
+  
   for (i in 1:nrow(sumout)) {
-    constant <- ifelse(sumout$theta[i] == 0, 1, 0)
     sumout$bias_st[i] <-
-      ((sumout$mean_st[i] + constant) - (sumout$theta[i] + constant)) / abs(sumout$theta[i] + constant)
+      sumout$mean_st[i] - sumout$theta[i]
+    sumout$bias_pct_st[i] <-
+      (sumout$mean_st[i] - sumout$theta[i]) / abs(sumout$theta[i])
   }
+  
   
   sumout$n_rep <- length(unique(df$samp_num))
   sumout <- sumout %>%
@@ -1314,6 +1322,8 @@ sumstat1 <- summaryStats(scen_1[["summary"]])
 longstat1 <- scen_1[["summary"]]
 ds1 <- scen_1$datasets
 
+saveRDS(scen_1, file=file.path(resultsPath, "scen_1.Rds"))
+
 
 ### end scenario 1
 ```
@@ -1347,10 +1357,7 @@ sumstat2 <- summaryStats(scen_2[["summary"]])
 longstat2 <- scen_2[["summary"]]
 ds2 <- scen_2$datasets
 
-subset(longstat2, group == 0 & type == "raw" & statistic == "est_mean") %>%
-  select(avg) %>%
-  unlist() %>%
-  sd()
+saveRDS(scen_2, file=file.path(resultsPath, "scen_2.Rds"))
 
 ### end scenario 2
 ```
@@ -1386,6 +1393,8 @@ sumstat3 <- summaryStats(scen_3[["summary"]])
 longstat3 <- scen_3[["summary"]]
 ds3 <- scen_3$datasets
 
+saveRDS(scen_3, file=file.path(resultsPath, "scen_3.Rds"))
+
 ### end scenario 3
 ```
 
@@ -1418,6 +1427,8 @@ scen_4 <- equateSim(seed = Seed,
 sumstat4 <- summaryStats(scen_4[["summary"]])
 longstat4 <- scen_4[["summary"]]
 ds4 <- scen_4$datasets
+
+saveRDS(scen_4, file=file.path(resultsPath, "scen_4.Rds"))
 
 ### end scenario 4
 ```
@@ -1452,7 +1463,7 @@ sumstat5 <- summaryStats(scen_5[["summary"]])
 longstat5 <- scen_5[["summary"]]
 ds5 <- scen_5$datasets
 
-#scen_5_data <- scen_5[["datasets"]]
+saveRDS(scen_5, file=file.path(resultsPath, "scen_5.Rds"))
 
 
 ### end scenario 5
@@ -1490,6 +1501,8 @@ sumstat6 <- summaryStats(scen_6[["summary"]])
 longstat6 <- scen_6[["summary"]]
 ds6 <- scen_6$datasets
 
+saveRDS(scen_6, file=file.path(resultsPath, "scen_6.Rds"))
+
 ### end scenario 6
 ```
 
@@ -1521,14 +1534,11 @@ scen_7 <- equateSim(seed = Seed,
                     verbose = FALSE, 
                     prog_bar = TRUE)
 
-# scen_8 <- equateSim(seed = Seed,grp_mean = mus,
-#                     grp_sd = sigmas,ref_grp = refGrp,n_rep_theta = repTheta,n_itm=length(items),
-#                     pars=hrme_par,n_rep = reps00,itms1=vars8,itms2=varsm8,fsc_method = fsMeth,
-#                     mod_res_obj=hrmecal,n_samp1 = n1,n_samp2 = n2)
-
 sumstat7 <- summaryStats(scen_7[["summary"]])
 longstat7 <- scen_7[["summary"]]
 ds7 <- scen_7$datasets
+
+saveRDS(scen_7, file=file.path(resultsPath, "scen_7.Rds"))
 
 ### end scenario 7
 ```
@@ -1562,29 +1572,13 @@ scen_8 <- equateSim(seed = Seed,
                     verbose = FALSE, 
                     prog_bar = TRUE)
 
-# seed <- 21589
-# grp_mean <- c(0,-0.24)
-# grp_sd <- c(1,1.1)
-# ref_grp <- 1
-# n_rep_theta <- 1
-# n_itm <- length(items)
-# pars <- hrme_par
-# n_rep <- 500
-# itms1 <- vars8
-# itms2 <- varsm8
-# fsc_method <- "EAP"
-# mod_res_obj <- hrmecal
-# n_samp1 <- 500
-# n_samp2 <- 500
-
-# scen_8 <- equateSim(seed = Seed,grp_mean=c(mean_hrs,mean_mhas),
-#                     grp_sd = sigmas,n_samp=500,n_rep_theta = repTheta,n_itm=length(items),
-#                     pars=hrme_par,n_rep = reps00,itms1=vars8,itms2=varsm8,fsc_method = fsMeth,
-#                     mod_res_obj=hrmecal)
-
 sumstat8 <- summaryStats(scen_8[["summary"]])
 longstat8 <- scen_8[["summary"]]
 ds8 <- scen_8$datasets
+
+saveRDS(scen_8, file=file.path(resultsPath, "scen_8.Rds"))
+
+### end scenario 8
 ```
 
 ### Scenario 9
@@ -1598,8 +1592,8 @@ scen_9 <- equateSim(seed = Seed,
                     #n_itm=length(items),
                     pars=hrme_par,
                     n_rep = reps,
-                    itms1=items,
-                    itms2=items,
+                    itms1=vars,
+                    itms2=varsm,
                     fsc_method = fsMeth,
                     mod_res_obj=hrmecal,
                     n_samp1 = n1,
@@ -1616,6 +1610,45 @@ scen_9 <- equateSim(seed = Seed,
 sumstat9 <- summaryStats(scen_9[["summary"]])
 longstat9 <- scen_9[["summary"]]
 ds9 <- scen_9$datasets
+
+saveRDS(scen_9, file=file.path(resultsPath, "scen_9.Rds"))
+
+### end scenario 9
+```
+
+### Scenario 10
+
+```{r scen10}
+scen_10 <- equateSim(seed = Seed, 
+                    grp_mean = mus,
+                    grp_sd = sigmas,
+                    ref_grp = refGrp,
+                    n_rep_theta = repTheta,
+                    #n_itm=length(items),
+                    pars=hrme_par,
+                    n_rep = reps,
+                    itms1=vars,
+                    itms2=varsm,
+                    fsc_method = fsMeth,
+                    mod_res_obj=hrmecal,
+                    n_samp1 = n1,
+                    n_samp2 = n2,
+                    save_sims = TRUE,
+                    save_log = TRUE,
+                    log_file = file.path(logPath, "scenario10.txt"),
+                    verbose = FALSE, 
+                    prog_bar = TRUE,
+                    man_override = list(iname = c("UDAY", "UMON", "UDAY", "UMON", "UYER"),
+                                        parameter = c("b", "b", "a1", "a1", "a1"), 
+                                        val = c(0, 1.928, 4, 4, 4)))
+
+sumstat10 <- summaryStats(scen_10[["summary"]])
+longstat10 <- scen_10[["summary"]]
+ds10 <- scen_10$datasets
+
+saveRDS(scen_10, file=file.path(resultsPath, "scen_10.Rds"))
+
+### end scenario 10
 ```
 
 ## Combine and Process Simulated Data
@@ -1629,24 +1662,10 @@ sumstat3$scenario <- 3
 sumstat4$scenario <- 4
 sumstat5$scenario <- 5
 sumstat6$scenario <- 6
-
-# sumstat <- rbind(sumstat1,sumstat2,sumstat3,sumstat4,sumstat5,sumstat6)
-# sumstat$scenario_label <- ifelse(sumstat$scenario == 1,"HRS+MHAS_all_shared",
-#                                  ifelse(sumstat$scenario == 2,"HRS+MHAS_UMON_UDAY_UYER_shared",
-#                                         ifelse(sumstat$scenario == 3,"HRS+MHAS_UMON_UDAY_UYER_UIWR_shared",
-#                                                ifelse(sumstat$scenario == 4,"HRS_all_shared",
-#                                                       ifelse(sumstat$scenario == 5,"MHAS_all_shared",
-#                                                              ifelse(sumstat$scenario == 6,"HRS+HMAS_UDAY_shared",
-#                                                                     ifelse(sumstat$scenario == 7,"HRS+MHAS_UIWR_shared_no_MHAS_dates",
-#                                                                            ifelse(sumstat$scenario == 7,"HRS+MHAS_UIWR_shared_no_HRS_dates",
-#                                                                                   NA))))))))
-
-#load("Results/simulation_results_2020-01-07-18-28.RData")
-
 sumstat7$scenario <- 7
 sumstat8$scenario <- 8
 sumstat9$scenario <- 9
-#sumstat10$scenario <- 10
+sumstat10$scenario <- 10
 
 longstat1$scenario <- 1
 longstat2$scenario <- 2
@@ -1657,7 +1676,7 @@ longstat6$scenario <- 6
 longstat7$scenario <- 7
 longstat8$scenario <- 8
 longstat9$scenario <- 9
-#longstat10$scenario <- 10
+longstat10$scenario <- 10
 
 longstat <- bind_rows(longstat1,
                       longstat2,
@@ -1667,8 +1686,7 @@ longstat <- bind_rows(longstat1,
                       longstat6,
                       longstat7,
                       longstat8,
-                      longstat9
-                      #,longstat10
+                      longstat9, longstat10
                       )
 
 ds1$scenario <- 1
@@ -1680,45 +1698,33 @@ ds6$scenario <- 6
 ds7$scenario <- 7
 ds8$scenario <- 8
 ds9$scenario <- 9
-#ds10$scenario <- 10
+ds10$scenario <- 10
 
-dsAll <- bind_rows(ds1, ds2, ds3, ds4, ds5, ds6, ds7, ds8, ds9
-                   #, ds10
+dsAll <- bind_rows(ds1, ds2, ds3, ds4, ds5, ds6, ds7, ds8, ds9, ds10
                    )
 
-# sumstat7 <- rbind(sumstat7,sumstat8)
-# sumstat7$scenario_label <- ifelse(sumstat7$scenario == 1,"HRS+MHAS_all_shared",
-#                                   ifelse(sumstat7$scenario == 2,"HRS+MHAS_UMON_UDAY_UYER_shared",
-#                                          ifelse(sumstat7$scenario == 3,"HRS+MHAS_UMON_UDAY_UYER_UIWR_shared",
-#                                                 ifelse(sumstat7$scenario == 4,"HRS_all_shared",
-#                                                        ifelse(sumstat7$scenario == 5,"MHAS_all_shared",
-#                                                               ifelse(sumstat7$scenario == 6,"HRS+HMAS_UDAY_shared",
-#                                                                      ifelse(sumstat7$scenario == 7,"HRS+MHAS_UIWR_shared_no_MHAS_dates",
-#                                                                             ifelse(sumstat7$scenario == 8,"HRS+MHAS_UIWR_shared_no_HRS_dates",
-#                                                                                    NA))))))))
-
-# sumstat <- rbind(sumstat,sumstat7)
-sumstat <- rbind(sumstat1,sumstat2,sumstat3,sumstat4,sumstat5,sumstat6, sumstat7, sumstat8, sumstat9
-                 #, sumstat10
+sumstat <- rbind(sumstat1,sumstat2,sumstat3,sumstat4,sumstat5,sumstat6, sumstat7, sumstat8, sumstat9, sumstat10
                  )
 sumstat$scenario_label <- factor(sumstat$scenario, 
-                                 levels = 1:9, 
+                                 levels = 1:10, 
                                  labels = c("HRS+MHAS_all_shared",
                                             "HRS+MHAS_UMON_UDAY_UYER_shared",
                                             "HRS+MHAS_UMON_UDAY_UYER_UIWR_shared",
-                                            "HRS_all_shared", 
+                                            "HRS_all_shared",
                                             "MHAS_all_shared",
                                             "HRS+HMAS_UDAY_shared",
                                             "HRS+MHAS_UIWR_shared_no_MHAS_dates",
                                             "HRS+MHAS_UIWR_shared_no_HRS_dates",
-                                            "HRS+MHAS_UMON(b=1.928)_UDAY(b=0)_UYER(b=-1.928)_shared"))
+                                            "HRS+MHAS_UMON(b=1.928)_UDAY(b=0)_UYER(b=-1.928)_shared", 
+                                 "HRS+MHAS_UMON(b=1.928,a1=4)_UDAY(b=0,a1=4)_UYER(b=-1.928,a1=4)_shared"))
 
-#save(sumstat,mean_sd,file=paste0("Results/simulation_results_",format(Sys.time(), '%Y-%m-%d-%H-%M'),".RData"))
 saveRDS(sumstat,file=file.path(resultsPath, paste0("sumstat_", outFolderName, ".rds")))
 #sumstat <- readRDS("Results/sumstat_2020-07-08-18-13.rds")
 
-save.image(file=file.path(resultsPath, paste0("simulation_results_", outFolderName, ".RData")))
-#load()
+save(list = ls(all.names = TRUE),
+     file=file.path(resultsPath, paste0("simulation_results_", outFolderName, ".RData")),
+     envir = environment())
+#load("Output/2020-08-06_09-04-AM/Results/simulation_results_2020-08-06_09-04-AM.RData")
 ```
 
 ### Create Tables
@@ -1731,21 +1737,21 @@ DT::datatable(sumstat, options = list(pageLength = 30), rownames = FALSE) %>%
 read_docx() %>%  # a new, empty document
   body_add_table(sumstat %>% 
                    mutate_if(is.numeric, round, 3) %>%
-                   dplyr::select(scenario, mean, sd, bias, ese, rmse, r_theta_est, mean_st, sd_st, bias_st, ese_st, rmse_st) %>%
+                   dplyr::select(scenario, mean, sd, bias, bias_pct, ese, rmse, r_theta_est) %>%
                    filter(group == "Combined"), style = "table_template") %>% 
   print(target=file.path(resultsPath, "Table3.docx"))
 
 read_docx() %>%  # a new, empty document
   body_add_table(sumstat %>% 
                    mutate_if(is.numeric, round, 3) %>%
-                   dplyr::select(scenario, mean, sd, bias, ese, rmse, r_theta_est, mean_st, sd_st, bias_st, ese_st, rmse_st) %>%
+                   dplyr::select(scenario, mean, sd, bias, bias_pct, ese, rmse, r_theta_est) %>%
                    filter(group == "Group 1"), style = "table_template") %>% 
   print(target=file.path(resultsPath, "Table4.docx"))
 
 read_docx() %>%  # a new, empty document
   body_add_table(sumstat %>% 
                    mutate_if(is.numeric, round, 3) %>%
-                   dplyr::select(scenario, mean, sd, bias, ese, rmse, r_theta_est, mean_st, sd_st, bias_st, ese_st, rmse_st) %>%
+                   dplyr::select(scenario, mean, sd, bias, bias_pct, ese, rmse, r_theta_est) %>%
                    filter(group == "Group 2"), style = "table_template") %>% 
   print(target=file.path(resultsPath, "Table5.docx"))
 
@@ -1756,6 +1762,8 @@ read_docx() %>%  # a new, empty document
 ```{r plots}
 # Plot scenarios
 
+nscen <- 10
+
 sumlong <- sumstat %>%
   dplyr::select(group, mean, mean_st, sd, sd_st, n_rep, scenario) %>%
   pivot_longer(cols = c(mean, mean_st, sd, sd_st),
@@ -1764,7 +1772,7 @@ sumlong <- sumstat %>%
   mutate_at(vars(stat), replace_na, "us") %>%
   mutate(low95 = mean - qnorm(.975)*sd/sqrt(n_rep),
          up95 = mean + qnorm(.975)*sd/sqrt(n_rep)) %>%
-  mutate(scenF = factor(scenario, levels = 1:9, labels = paste0("Scenario ", 1:9))) %>%
+  mutate(scenF = factor(scenario, levels = 1:nscen, labels = paste0("Scenario ", 1:nscen))) %>%
   mutate(Group = factor(group, levels = c("Combined", "Group 1", "Group 2"))) %>%
   mutate(stat = factor(stat, levels = c("us", "st"),
                        labels = c("Unstandardized", "Standardized"))) %>%
@@ -1801,7 +1809,7 @@ for(s in unique(longstat$type)){
   rcp <- longstat %>%
     filter(type == s) %>%
     filter(statistic == "est_mean") %>%
-    mutate(scenF = factor(scenario, levels = 1:9, labels = paste0("Scenario ", 1:9))) %>%
+    mutate(scenF = factor(scenario, levels = 1:nscen, labels = paste0("Scenario ", 1:nscen))) %>%
     mutate(Group = factor(group, levels = 0:2, labels = c("Combined", "Group 1", "Group 2"))) %>%
     ggplot(aes(x = fct_rev(scenF), y = avg, fill = scenF)) +
     geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8, scale = "width") +
@@ -1824,8 +1832,8 @@ for(s in unique(longstat$type)){
     theme(panel.background = element_rect(fill = "gray85"),
           axis.text.x = element_text(size = 6))
   
-  ggsave(file.path(plotPath, paste0("Figure_", s, "_.tiff")), width = 6.5, height = 4.5) # High quality for submission
-  ggsave(file.path(plotPath, paste0("Figure_", s, "_.png")), width = 6.5, height = 4.5) # For Word doc
+  ggsave(file.path(plotPath, paste0("Figure_", s, ".tiff")), width = 6.5, height = 4.5) # High quality for submission
+  ggsave(file.path(plotPath, paste0("Figure_", s, ".png")), width = 6.5, height = 4.5) # For Word doc
   
 
 }
@@ -1836,7 +1844,7 @@ nPoints <- 500
 
 set.seed(48293)
 ba1 <- dsAll %>%
-  mutate(Scenario = factor(scenario, levels = 1:9, labels = paste0("Scenario ", 1:9))) %>%
+  mutate(Scenario = factor(scenario, levels = 1:nscen, labels = paste0("Scenario ", 1:nscen))) %>%
   group_by(scenario) %>%
   sample_n(nPoints) %>%
   ggplot(aes(x = ability, y = resid, colour = factor(group), shape = factor(group))) +
@@ -1856,7 +1864,7 @@ ggsave(file.path(plotPath, "BlandAltman_us.tiff"), width = 6.5, height = 4.5) # 
 
 set.seed(48293)
 ba2 <- dsAll %>%
-  mutate(Scenario = factor(scenario, levels = 1:9, labels = paste0("Scenario ", 1:9))) %>%
+  mutate(Scenario = factor(scenario, levels = 1:nscen, labels = paste0("Scenario ", 1:nscen))) %>%
   group_by(scenario) %>%
   sample_n(nPoints) %>%
   ggplot(aes(x = ability, y = resid_st, colour = factor(group), shape = factor(group))) +
@@ -2009,6 +2017,90 @@ pandoc.table(t2,
              missing = "")
 ```
 
+### Table 2a. Parameter estimates from IRT analysis of the HRS sample
+
+```{r t2a, results = 'asis'}
+t2a <- coef(hrscal, IRTpars = TRUE, simplify = TRUE)$items %>%
+  data.frame
+t2a$order <- c(7, 4, 1, 12, 11, 2, 8, 9, 5, 6, 10, 3)
+t2a <- t2a[order(t2a$order),]
+t2a$order <- NULL
+t2a$b1 <- coalesce(t2a$b1, t2a$b)
+t2a[c("b", "g", "u")] <- NULL
+t2a$Item <- c("Orientation to day†", #1
+             "Orientation to month†", #2
+             "Orientation to year†", #3
+             "Orientation to date", #4
+             "President", #5
+             "Vice President", #6
+             "Backward Counting", #7
+             "Verbal Naming - Scissors", #8
+             "Verbal Naming - Cactus", #9
+             "Serial 7s", #10
+             "Immediate 10-Word Recall", #11
+             "Delayed 10-Word Recall") #12
+t2a <- select(t2a, Item, everything())
+
+read_docx() %>%  # a new, empty document
+  body_add_table(t2a %>% 
+                   mutate_if(is.numeric, round, 3) %>%
+                   replace(., is.na(.), ""), 
+                 style = "table_template") %>% 
+  print(target=file.path(resultsPath, "Table2a.docx"))
+
+pandoc.table(t2a, 
+             caption = "\n
+             Note. a = discrimination parameter; b1-b9 = threshold parameters.\n
+             †Natural linking item",
+             digits = c(0, rep(3, 10)),
+             keep.trailing.zeros = TRUE,
+             split.tables = Inf,
+             row.names = FALSE,
+             missing = "")
+```
+
+
+### Table 2b. Parameter estimates from IRT analysis of the MHAS sample
+
+
+```{r t2b, results = 'asis'}
+t2b <- coef(mexcal, IRTpars = TRUE, simplify = TRUE)$items %>%
+  data.frame
+t2b$order <- c(1, 9, 10,  
+              2, 8, 7, 4, 5, 6, 3)
+t2b <- t2b[order(t2b$order),]
+t2b$order <- NULL
+t2b$b1 <- coalesce(t2b$b1, t2b$b)
+t2b[c("b", "g", "u")] <- NULL
+t2b$Item <- c("Orientation to day†", #1
+             "Orientation to month†", #2
+             "Orientation to year†", #3
+             "8-Word Recall Trial 1", #4
+             "8-Word Recall Trial 2", #5
+             "8-Word Recall Trial 3", #6
+             "Delayed 8-Word Recall", #7
+             "Visual Scanning", #8
+             "Figure Copy", #9
+             "Figure Recall") #10
+t2b <- select(t2b, Item, everything())
+
+read_docx() %>%  # a new, empty document
+  body_add_table(t2b %>% 
+                   mutate_if(is.numeric, round, 3) %>%
+                   replace(., is.na(.), ""), 
+                 style = "table_template") %>% 
+  print(target=file.path(resultsPath, "Table2b.docx"))
+
+pandoc.table(t2b, 
+             caption = "\n
+             Note. a = discrimination parameter; b1-b9 = threshold parameters.\n
+             †Natural linking item",
+             digits = c(0, rep(3, 10)),
+             keep.trailing.zeros = TRUE,
+             split.tables = Inf,
+             row.names = FALSE,
+             missing = "")
+```
 
 ## Table 3. Simulation Results for the Combined Group 
 
@@ -2066,18 +2158,10 @@ pandoc.table(t5,
 Empirical sampling distributions of sample factor score means (unstandardized) derived from `r reps` simulations of each harmonization scenario. Each point represents one sample mean. Boxplots show median, approximate 95% confidence intervals for the median (as notches in the boxplot), interquartile range (hinges), and 1.5 times the interquartile range (whiskers). Dashed vertical lines represent the population mean ($\mu_{\theta_{CG}} = -0.12$, $\mu_{\theta_{G1}} = 0$, $\mu_{\theta_{G2}} = -0.24$).
 
 ```{r fig1}
-knitr::include_graphics(file.path(plotPath, "Figure_raw_3a.png"))
+knitr::include_graphics(file.path(plotPath, "Figure_raw.png"))
 ```
 
 ## Figure 2
-
-Empirical sampling distributions of sample factor score means (standardized) derived from `r reps` simulations of each harmonization scenario. Each point represents one sample mean. Boxplots show median, approximate 95% confidence intervals for the median (as notches in the boxplot), interquartile range (hinges), and 1.5 times the interquartile range (whiskers). Dashed vertical lines represent the population mean ($\mu_{\theta_{CG}} = -0.12$, $\mu_{\theta_{G1}} = 0$, $\mu_{\theta_{G2}} = -0.24$).
-
-```{r fig2}
-knitr::include_graphics(file.path(plotPath, "Figure_standardized_3a.png"))
-```
-
-## Figure 3
 
 Bland-Altman plots showing unstandardized data from `r nPoints` randomly selected simulated respondents per scenario. The x-axis represents the data generating $\theta_i$ values, and the y-axis represents the unstandardized residuals ($x_i - \theta_i$) broken down by group and scenario. Dashed horizontal lines are drawn at ± 0.30 raw score units from 0.
 
@@ -2100,37 +2184,6 @@ pandoc.table(f3dat1,
 
 ```{r f3dat2, results = 'asis'}
 pandoc.table(f3dat2,
-             digits = 3,
-             keep.trailing.zeros = TRUE,
-             split.tables = Inf,
-             row.names = FALSE,
-             col.names = c("Within 0.3", "Scenario", "Proportion"))
-```
-
-## Figure 4
-
-Bland-Altman plots showing standardized data from `r npoints` randomly selected simulated respondents per scenario. The x-axis represents the data generating $\theta_i$ values and the y-axis represents the standardized residuals ($x_i - \theta_i$) broken down by group and scenario. Dashed horizontal lines are drawn at ± 0.30 standardized score units from 0.
-
-```{r fig4}
-knitr::include_graphics(file.path(plotPath, "BlandAltman_st.png"))
-```
-
-
-### Standardized factor score estimates outside of |.30| units in the two subgroups
-
-```{r f4dat1, results = 'asis'}
-pandoc.table(f4dat1,
-             digits = 3,
-             keep.trailing.zeros = TRUE,
-             split.tables = Inf,
-             row.names = FALSE,
-             col.names = c("Within 0.3", "Scenario", "Group", "Proportion"))
-```
-
-### Standardized factor score estimates outside of |.30| units in the combined sample
-
-```{r f4dat2, results = 'asis'}
-pandoc.table(f4dat2,
              digits = 3,
              keep.trailing.zeros = TRUE,
              split.tables = Inf,
