@@ -1,0 +1,2802 @@
+---
+params: 
+  sub_title:
+    input: text
+    label: fileName
+    value: 'fileName'
+title: "Harmonization Simulation"
+subtitle: "Output/Simulations_2020-10-09_01-01-PM.html"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    keep_md: TRUE
+knit: (
+  function(inputFile, encoding) { 
+
+    fileName <- file.path("Output", paste0("Simulations_", format(Sys.time(), "%Y-%m-%d_%I-%M-%p"), ".html"))
+
+    rmarkdown::render( 
+      input       = inputFile, 
+      encoding    = encoding, 
+      params      = list(sub_title = fileName),      
+      output_file = fileName) })
+---
+
+# Simulation details
+
+This simulation generates factor scores by fixing the item parameter estimates to their sample-estimated values (obtained from group 1 for linking items and the combined sample for non-linking items) and by fixing the metric to $N(0, 1)$.
+
+10 scenarios are simulated. In the 9th and 10th, the estimates are manually overridden for two items to evaluate the performance of the harmonization when item difficulties are symmetrically distributed around 0 (9) and to use good discrimination parameters (10).
+
+# Syntax
+
+## Initialization
+
+
+```r
+# ----------------------------Set Simulation Options -----------------------------
+
+runOrRead <- "read" # If "read", reads in old files. If "run," generates new simulations.
+readFolder <- "Output/2020-10-05_11-00-AM/Results"
+
+Seed <- 21589
+mus <- c(0, -0.24)
+#sigmas <- c(sd_hrs, sd_mhas)
+refGrp <- 1
+repTheta <- 1
+reps <- 500
+fsMeth <- "EAP"
+n1 <- 500
+n2 <- 500
+```
+
+
+```r
+# ----------------------------Initialize -----------------------------
+# Load packages
+library(pacman)
+p_load(tidyverse, pander, readr, mirt, tidyr, ggplot2, lubridate, 
+       DT, RColorBrewer, ggthemes, officer, knitr, knitrProgressBar,
+       stringr)
+#source("~/Research/Code/runMplus.R")
+#source("~/Research/Code/extractVarNames.R")
+#source("Code/simulation_functions.R")
+
+if(!dir.exists("Output")) {
+  dir.create("Output")
+}
+outFolderName <- format(Sys.time(), "%Y-%m-%d_%I-%M-%p")
+outPath <- file.path("Output", outFolderName)
+dir.create(outPath)
+logPath <- file.path(outPath, "Logs")
+dir.create(logPath)
+plotPath <- file.path(outPath, "Plots")
+dir.create(plotPath)
+resultsPath <- file.path(outPath, "Results")
+dir.create(resultsPath)
+```
+
+## Functions
+
+### extractDiffMatrix
+
+
+```r
+# ---------------------------- Define Functions -----------------------------
+# extractDiffMatrix is used by equateSim and not called directly
+extractDiffMatrix <- function(pars) {
+  diff1 <- pars[grepl("d+", pars$name), c("item", "name", "value")]
+  diff1$item <- as.character(diff1$item)
+  diffsum <- diff1 %>% group_by(item) %>% summarise(ncat = sum(!is.na(item)))
+  diff <- matrix(nrow = nrow(diffsum), ncol = max(diffsum$ncat))
+  for (j in 1:nrow(diffsum)) {
+    vals <- diff1[diff1$item %in% diffsum[j, "item"], "value"]
+    if (length(vals) < max(diffsum$ncat)) {
+      for (i in (length(vals) + 1):max(diffsum$ncat)) {
+        vals[i] <- NA
+      }
+    }
+    diff[j, ] <- vals
+  }
+  return(diff)
+}
+```
+
+### equateSim
+
+
+```r
+# equateSim is a function the uses R mirt item response theory (IRT) methods
+# to: 1) simulate item level datasets based on item parameters, 2) perform IRT
+# calibrations on the simulated datasets, 3) estimate ability scores for each
+# person in the simulated datasets, and 4) compute metrics to quantify the
+# correspondence between the estimated ability from the simulated datasets and the
+# true ability that was used to generate the simulations. Metrics include the
+# root mean square error (RMSE), the mean of the estimated ability scores,
+# the standard deviation of the estimated ability scores, and, optionally,
+# the reliability of the estimated ability scores as measured by the agreement
+# (Pearson's r or intra-class correlation) between the estimated ability scores
+# and the data-generating theta values for each case. Multiple simulations
+# of the same set of simulated true ability values can be generated (n_rep_theta).
+#   This function simulates two groups that can differ in mean and standard
+# deviation of simulated true ability, and different items can be used for each
+# group as long as there is at least one common, linking item.
+#
+# Parameters:
+#   seed - random seed for simulations (default=NULL)
+#   grp_mean - true ability means of the two groups (default=c(0.5,-0.5))
+#   grp_sd - true ability standard deviations of the two groups (default=c(1,1))
+#   ref_grp - which group is used as the reference? 0 = no reference group, 1 = group 1, 2 = group 2
+#   n_rep - number of simulated samples of true ability values (default=100)
+#   n_rep_theta - number of repetitions of each simulated sample of true ability
+#     values (default=1)
+#   n_samp1 - sample size of group 1 in each simulation (default=500)
+#   n_samp2 - sample size of group 2 in each simulation (default=500)
+#   pars - mirt item parameters file (default=mcal_par)
+#     A parameter file can be generated by:
+#       mcal_par <- mirt(df,mdl,pars='values') where df is a dataframe with
+#         item response data and mdl is a mirt model object. The returned file
+#         (mcal_par in this example) can be edited to change item parameters.
+#   n_rep - number of simulated samples of true ability values (default=100)
+#   itms1 - list of items available for group 1 (default=item_list_1)
+#   itms2 - list of items available for group 2 (default=item_list_2)
+#   fsc_method - mirt method for calculating estimated ability values
+#     (default="EAP")
+#   mod_res_obj - mirt model results object from mirt analysis. This must
+#     be from the same mirt model as pars.
+#   save_sims - option to output simulated datasets (default=FALSE)
+#   verbose - option to print (TRUE) or suppress (FALSE) messages (default = FALSE)
+#   save_log - option to save a log of verbose output instead of printing to screen (default = TRUE)
+#   log_file - name of log file to be saved. Default is paste0("technical_output_log_", format(Sys.time(), "%Y-%m-%d_%I-%M-%p"), ".txt")
+#   prog_bar - option to show a progress bar on screen instead of verbose messages (default = TRUE)
+#   rel - option to calculate reliability statistics for individual ability estimates (default = TRUE)
+#   man_override - list of parameters and their values to manually override when performing the simulations. The default is NULL.
+#     Three parameters must be specified in the list. These are:
+#       1. iname - the name of the item(s) whose parameters will be fixed (character vector)
+#       2. parameter - the name of the parameter to be fixed (character vector)
+#         Options include:
+#           "a1" - item discrimination
+#           "d" - item easiness (the default in mirt) for a dichotomous indicator
+#           "d1", "d2", ... "dk", item easiness (the default in mirt) thresholds where k is the number of thresholds for a polytomous item.
+#           "b" - item difficulty (converted to easiness by this script for use in mirt) for a dichotomous indicator
+#           "b1", "b2", ... "bk", item difficulty (converted to easiness by this script for use in mirt) thresholds where k is the number of thresholds for a polytomous item.
+#       3. val - the numeric value of the parameter(s) to be fixed (numeric)
+#     Example usage is as follows:
+#         man_override = list(iname = c("UDAY", "UMON"),
+#                           parameter = c("b", "b"),
+#                           val = c(0, 1.928))
+#   std_sample - option to standardize the harmonized factor scores with scaling based on the empirical sample data (default = FALSE, which uses population-based scaling)
+#   std_ref - if std_sample = TRUE, this sets the reference group for scaling of the standardized factor scores.
+#       Options are:
+#           0 for combined sample
+#           1 for group 1
+#           2 for group 2
+#           NULL (default)
+
+# equateSim returns a list with 2 elements:
+# 1. "summary" - a dataframe that has summary statistics (rmse, mean
+# estimated ability, sd estimated ability, and, optionally, Pearson's r and ICC(C,1) reliability statistics)
+# for each group and each simulated
+# sample of true abilities (n_rep). These statistics are produced for raw
+# estimated abilities and for estimated abilities on a metric transformed to
+# match the true ability metric (default) or the metric scaled according
+# to a reference sample's mean and standard deviation.
+# 2. "datasets" (if save_sims=TRUE) - a long format dataframe that includes original and estimated
+# theta scores, group assignment, sample number, and rep_theta number
+
+equateSim <- function(seed = NULL,
+                      grp_mean = c(0.5,-0.5),
+                      grp_sd = c(1, 1),
+                      ref_grp = 1,
+                      n_samp1 = 500,
+                      n_samp2 = 500,
+                      n_rep_theta = 1,
+                      pars = mcal_pars,
+                      n_rep = 100,
+                      itms1 = item_list_1,
+                      itms2 = item_list_2,
+                      fsc_method = "EAP",
+                      mod_res_obj = NULL,
+                      save_sims = FALSE,
+                      verbose = FALSE,
+                      save_log = TRUE,
+                      log_file = paste0(outPath, "/Logs/technical_output_log_",
+                                        outFolderName,
+                                        ".txt"),
+                      prog_bar = TRUE,
+                      rel = TRUE,
+                      man_override = NULL,
+                      std_sample = FALSE,
+                      std_ref = NULL) {
+  
+  simBegin <- Sys.time()
+  
+  ### Begin initialize display settings
+  if (prog_bar) {
+    library(progress)
+    if (verbose & !save_log) {
+      warning(
+        "Progress bar cannot be displayed if verbose == TRUE. A log file will be created to store verbose output."
+      )
+      save_log <- TRUE
+    }
+    # pb <- progress_bar$new(
+    #   format = "  Simulating data [:bar] :current of :total (:percent) elapsed: :elapsed eta: :eta",
+    #   total = n_rep,
+    #   clear = FALSE,
+    #   width = 80
+    # )
+    pb <- knitrProgressBar::progress_estimated(n_rep)
+  }
+  ### End initialize display settings
+  
+  ### Begin initialize logging of technical output
+  if (save_log) {
+    verbose <- TRUE
+    options(max.print = 9999)
+    sink(log_file)
+    print(sys.call(which = 0L)) # Prints the function call
+    print(mget(ls()[!(ls() == "pb")])) # prints the arguments passed to the equateSim function
+  }
+  ### End initialize logging of technical output
+  
+  ### Begin load required packages
+  require(dplyr)
+  require(tidyr)
+  require(mirt)
+  require(stringr)
+  if (rel) require(irr) # load irr package if reliability statistics are requested.
+  ### End load required packages
+  
+  ### Begin check to ensure objects passed to function are correctly specified.
+  if (any(!is.character(itms1),!is.character(itms2))) {
+    if (save_log) {
+      print("Error: itms1 and itms2 should be character vectors.")
+      sink()
+    }
+    stop("itms1 and itms2 should be character vectors.")
+  } else if (!(ref_grp %in% 0:2)) {
+    if (save_log) {
+      print(
+        "Error: Incorrectly specified reference group. ref_grp should be 0 for no reference group, 1 for group 1, or 2 for group 2."
+      )
+      sink()
+      stop()
+    }
+    stop(
+      "Incorrectly specified reference group. ref_grp should be 0 for no reference group, 1 for group 1, or 2 for group 2."
+    )
+  } else {
+    ### End check to ensure objects passed to function are correctly specified.
+    
+    ### Begin initialize items, parameters, and model syntax
+    n_itm <- length(union(itms1, itms2))
+    link_itms <- dplyr::intersect(itms1, itms2)
+    if (save_log) {
+      cat("\n Group 1 Items: ", itms1)
+      cat("\n Group 2 Items: ", itms2)
+      cat("\n Linking Items: ", link_itms, "\n\n")
+    }
+    diff <- extractDiffMatrix(pars)
+    disc <- pars[pars$name == "a1", "value"]
+    itemtype <- as.character(pars[pars$name == "a1", "class"])
+    model <- mirt.model(paste0("cog = 1-", n_itm))
+    
+    # If manual override is requested, this checks to see whether user-inputted data
+    # is in the form of difficulty (b) parameters.
+    # If so, this converts them to easiness (d) parameters for use in mirt
+    # The conversion formula used is d = b/-a
+    if (!is.null(man_override)) {
+      for (p in 1:length(man_override$iname)) {
+        # Convert b to d
+        if (str_detect(man_override$parameter[p], "b")) {
+          man_override$parameter[p] <- gsub("b", "d", man_override$parameter[p])
+          man_override$val[p] <- man_override$val[p] / -coef(mod_res_obj)[[man_override$iname[p]]][1]
+        }
+      }
+    }
+    ### End initialize items, parameters, and model syntax
+    
+    ### Begin simulating, estimating factor scores, and generating summary data
+    set.seed(seed)
+    j <- 0
+    while (j < n_rep) {
+      j <- j + 1
+      startj <- j # keep track of where j starts
+      time <- Sys.time() # keep track of time simulation began
+      theta1 <- data.frame(rnorm(n_samp1, grp_mean[1], grp_sd[1])) # simulate group 1 data
+      names(theta1) <- "theta1"
+      theta1$group <- 1
+      theta2 <- data.frame(rnorm(n_samp2, grp_mean[2], grp_sd[2])) # simulate group 2 data
+      names(theta2) <- "theta1"
+      theta2$group <- 2
+      theta1 <- rbind(theta1, theta2) # combine groups 1 and 2
+      
+      ### Begin data simulation
+      ds <- list() # ds is used to store each replicate of a simulated data set for a given theta 
+      # (by default, only one replicate per theta (n_rep_theta) is simulated, so unless the user overrides this 
+      # setting, the length of ds will be 1).
+      for (i in 1:n_rep_theta) {
+        if (is.null(mod_res_obj)) {
+          
+          # ds2 contains the data simulated according to the specified parameters
+          # Here, ds2 is created when no mod_res_obj is provided by the user.
+          # Item parameters are taken from the mirt item parameters object passed to the pars argument
+          ds2 <- data.frame(simdata(a = disc,
+                                    d = diff,
+                                    N = n_samp1 + n_samp2,
+                                    Theta = as.matrix(theta1$theta1),
+                                    itemtype = itemtype))
+        } else {
+          if (!is.null(man_override)) {
+            # If manual override of at least one item parameter is requested, this 
+            # replaces the existing item parameters passed as part of the mod_res_obj
+            # object with the user-specified parameters
+            
+            # Get the parameters from mod_res_obj
+            sim_pars <- coef(mod_res_obj, simplify = TRUE)$items %>%
+              data.frame() %>%
+              mutate(item = rownames(.)) %>%
+              pivot_longer(cols = names(dplyr::select(.,-item)))
+            
+            # For each user-specified parameter to be manually overridden, replace
+            # the mod_res_obj parameters with the user-specified values
+            for (p in 1:length(man_override$iname)) {
+              sim_pars$value[sim_pars$item == man_override$iname[p] &
+                               sim_pars$name == man_override$parameter[p]] <- man_override$val[p]
+            }
+            
+            # Reshape easiness parameter data so the object matches the matrix format required by mirt
+            sim_pars_d <- as_tibble(matrix(sim_pars$value[sim_pars$name %in% str_sort(unique(str_extract(pars$name, "^d[1-9]*")),
+                                                                                      na_last = NA)],
+                                           nrow = n_itm,
+                                           byrow = TRUE)) %>%
+              mutate(V1 = coalesce(V1, V2)) %>%
+              dplyr::select(-V2) %>%
+              data.matrix()
+            
+            # ds2 contains the data simulated according to the specified parameters
+            # Here, ds2 is created when mod_res_obj is provided by the user AND 
+            # when manual override of at least one parameter is requested.
+            # These item parameters are taken from the mod_res_obj object 
+            # unless otherwise specified ing the man_override argument
+            ds2 <- data.frame(simdata(
+              a = sim_pars$value[sim_pars$name == "a1"],
+              d = sim_pars_d,
+              itemtype = itemtype,
+              N = n_samp1 + n_samp2,
+              Theta = as.matrix(theta1$theta1)))
+          } else {
+            
+            # ds2 contains the data simulated according to the specified parameters
+            # Here, ds2 is created when mod_res_obj is provided by the user AND 
+            # when manual override of at least one parameter is NOT requested.
+            # These item parameters are taken from the mod_res_obj object 
+            ds2 <- data.frame(simdata(
+              model = mod_res_obj,
+              N = n_samp1 + n_samp2,
+              Theta = as.matrix(theta1$theta1)
+            ))
+          }
+        }
+
+        names(ds2) <- unique(pars[!pars$item == "GROUP", "item"])
+        ds2 <- cbind(theta1, ds2)
+        
+        # For each group, create missing data for items not administered to that group
+        for (group in 1:2) {
+          if (group == 1) {
+            ds2[ds2$group == 1, !names(ds2) %in% c("theta1", "group", itms1)] <- NA
+          } else {
+            ds2[ds2$group == 2, !names(ds2) %in% c("theta1", "group", itms2)] <- NA
+          }
+        }
+        ds[[i]] <- ds2
+      }
+      ### End data simulation
+      
+      ### Begin parameter estimation using simulated data
+      #### First, estimate the item parameters in the reference group only (metric fixed to N(0, 1))
+      #### Second, fix the item parameters obtained from step 1 and re-run the model in the full sample, 
+      ##### freely estimating the latent variable mean and variance.
+      ##### This scales the metric according to the reference group.
+      #### Third, fix all item parameter estimates, as well as the latent variable mean and standard deviation,
+      ##### and run a model with no free parameters. 
+      ##### This model with no free parameters will be used to generate factor scores in the full sample.
+      sim_summ <- list()
+      dataset <- list()
+      for (i in 1:length(ds)) {
+        # capture errors due to not all response option occurring in simulated dataset
+        pars1 <- tryCatch({
+          # This gets the parameter structure for the full data set and saves it as pars1
+          # Later, this parameter structure is modified when fixing parameters to the
+          # values derived from the reference group (if applicable)
+          # This does not do any parameter estimation.
+          mirt(
+            ds[[i]][, 3:(n_itm + 2)],
+            model = model,
+            pars = 'values',
+            verbose = verbose,
+            technical = list(
+              warn = all(!prog_bar, verbose) ,
+              message = all(!prog_bar, verbose)
+            )
+          )
+        }, warning = function(w) {
+          return("warning")
+        }, error = function(e) {
+          return("error")
+        })
+        
+        # t1 <- dplyr::select(ds[[i]], names(ds[[i]])[3:(n_itm+2)])
+        
+        pars2 <- tryCatch({
+          # This gets the parameter structure for the model when applied to the reference group (if applicable)
+          # and saves it as pars2
+          if (ref_grp == 0) {
+            # No reference group (full sample)
+            # This does not do any parameter estimation.
+            mirt(
+              dplyr::select(ds[[i]], names(ds[[i]])[3:(n_itm + 2)]),
+              model = model,
+              pars = 'values',
+              verbose = verbose,
+              technical = list(
+                warn = all(!prog_bar, verbose),
+                message = all(!prog_bar, verbose)
+              )
+            )
+          } else if (ref_grp == 1) {
+            # Reference group 1
+            # This does not do any parameter estimation.
+            mirt(
+              dplyr::select(filter(ds[[i]], group == ref_grp), all_of(itms1)),
+              model = mirt.model(paste0("cog = 1-", length(itms1))),
+              pars = 'values',
+              verbose = verbose,
+              technical = list(
+                warn = all(!prog_bar, verbose),
+                message = all(!prog_bar, verbose)
+              )
+            )
+          }  else if (ref_grp == 2) {
+            # Reference group 2
+            # This does not do any parameter estimation.
+            mirt(
+              dplyr::select(filter(ds[[i]], group == ref_grp), all_of(itms2)),
+              model = mirt.model(paste0("cog = 1-", length(itms2))),
+              pars = 'values',
+              verbose = verbose,
+              technical = list(
+                warn = all(!prog_bar, verbose),
+                message = all(!prog_bar, verbose)
+              )
+            )
+          } else {
+            stop(
+              "Incorrectly specified reference group. ref_grp should be 0 for no reference group, 1 for group 1, or 2 for group 2."
+            )
+          }
+        }, warning = function(w) {
+          return("warning")
+        }, error = function(e) {
+          return("error")
+        })
+        
+        if (is.data.frame(pars1) & is.data.frame(pars2)) {
+          if (verbose) {
+            cat("check 1 - pars1 and pars2 are dataframes\n")
+          }
+          if (nrow(pars1[pars1$item %in% link_itms, ]) ==
+              nrow(pars2[pars2$item %in% link_itms, ])) {
+            if (verbose) {
+              cat(
+                "check 2 - pars1 and pars2 linking items have the same number of parameters\n"
+              )
+            }
+            # If a reference group is selected, this runs the model only on the simulated reference group data/items
+            # to obtain difficulty and discrimination parameter estimates for the linking items
+            # that are later applied as constraints in the full sample.
+            if (ref_grp == 1) {
+              # Reference group 1
+              # This does parameter estimation in group 1 only.
+              # The metric is set to the default N(0, 1). No other parameters are fixed here.
+              mcal_rg <-
+                mirt(
+                  dplyr::select(filter(ds[[i]], group == ref_grp), all_of(itms1)),
+                  model = mirt.model(paste0("cog = 1-", length(
+                    itms1
+                  ))),
+                  pars = pars2,
+                  verbose = verbose,
+                  technical = list(
+                    warn = all(!prog_bar, verbose),
+                    message = all(!prog_bar, verbose)
+                  )
+                )
+              if (verbose) {
+                cat("calibration reference group = 1\n")
+              }
+            } else if (ref_grp == 2) {
+              # Reference group 2
+              # This does parameter estimation in group 2 only.
+              # The metric is set to the default N(0, 1). No other parameters are fixed here.
+              mcal_rg <-
+                mirt(
+                  dplyr::select(filter(ds[[i]], group == ref_grp), all_of(itms2)),
+                  model = mirt.model(paste0("cog = 1-", length(
+                    itms2
+                  ))),
+                  pars = pars2,
+                  verbose = verbose,
+                  technical = list(
+                    warn = all(!prog_bar, verbose),
+                    message = all(!prog_bar, verbose)
+                  )
+                )
+              if (verbose) {
+                cat("calibration reference group = 2\n")
+              }
+            } else if (ref_grp != 0) {
+              stop(
+                "Incorrectly specified reference group. ref_grp should be 0 for no reference group, 1 for group 1, or 2 for group 2."
+              )
+            }
+            
+            
+            if (ref_grp %in% 1:2) {
+              # If parameter estimates were obtained for one of the reference groups,
+              # constrain the linking item parameters here before estimating the models in the combined sample.
+              
+              for (itm in link_itms) {
+                mcal_itm <- data.frame(coef(
+                  mcal_rg,
+                  IRTpars = FALSE,
+                  simplify = TRUE
+                )$items)[itm, ]
+                
+                if (!is.na(mcal_itm$d)) {
+                  nthresh <- 1
+                } else {
+                  nthresh <- sum(!is.na(dplyr::select(
+                    mcal_itm, starts_with("d")
+                  )))
+                }
+                
+                pars1$value[pars1$name == "a1" &
+                              pars1$item %in% itm] <- mcal_itm[, "a1"]
+                pars1$est[pars1$name == "a1" &
+                            pars1$item %in% itm] <- FALSE
+                
+                for (threshn in 1:nthresh) {
+                  if (nthresh == 1) {
+                    pars1$value[pars1$name == "d" &
+                                  pars1$item %in% itm] <-
+                      mcal_itm[, "d"]
+                    pars1$est[pars1$name == "d" &
+                                pars1$item %in% itm] <- FALSE
+                    
+                  } else if (nthresh > 1) {
+                    pars1$value[pars1$name == paste0("d", threshn) &
+                                  pars1$item %in% itm] <-
+                      mcal_itm[, paste0("d", threshn)]
+                    pars1$est[pars1$name == paste0("d", threshn) &
+                                pars1$item %in% itm] <- FALSE
+                    
+                  }
+                }
+              }
+            }
+            
+            if (ref_grp %in% 1:2) {
+              # If a reference group is used (item parameters are constrained), freely estimate the latent variable mean and variance.
+              # This sets the metric based on the fixed parameter estimates.
+              pars1$est[pars1$name == "MEAN_1"] <- TRUE
+              pars1$est[pars1$name == "COV_11"] <- TRUE
+              if (verbose) {
+                cat(
+                  "\n\nParameter table after fixing to values of chosen reference group\n\n"
+                )
+                print(pars1)
+                cat("\n\n")
+              }
+            }
+            
+            # Now run the mirt model with either the linking items unconstrained (no reference group)
+            # or constrained (to the values estimated in the reference group) models
+            mcal <-
+              mirt(
+                ds[[i]][, 3:(n_itm + 2)],
+                model = model,
+                pars = pars1,
+                verbose = verbose,
+                technical = list(
+                  warn = all(!prog_bar, verbose),
+                  message = all(!prog_bar, verbose)
+                )
+              )
+            
+            ### End parameter estimation using simulated data
+            
+            ### Begin generating individual ability estimates (factor scores)
+            # Then fix all of the parameters to their estimates and use this fully constrained model to estimate factor scores.
+            
+            mcal_pars <- data.frame(coef(mcal, IRTpars = FALSE,
+                                         simplify = TRUE)$items) %>%
+              mutate(item = rownames(.)) %>%
+              pivot_longer(
+                cols = -item,
+                names_to = "name",
+                values_to = "value",
+                values_drop_na = TRUE
+              )
+            pars3 <- pars1
+            pars3$value[1:nrow(mcal_pars)] <- mcal_pars$value
+            pars3$est <- FALSE
+            
+            ## First option: fix M & SD to sample-estimated values
+            #pars3$value[pars3$name == "MEAN_1"] <- coef(mcal)$GroupPars[1]
+            #pars3$value[pars3$name == "COV_11"] <- coef(mcal)$GroupPars[2]
+            
+            ## Second option: fix M & SD to population values (M = 0, SD = 1)
+            pars3$value[pars3$name == "MEAN_1"] <- 0
+            pars3$value[pars3$name == "COV_11"] <- 1
+            
+            ## Third option: freely estimate M & SD
+            #pars3$est[pars3$name == "MEAN_1"] <- TRUE
+            #pars3$est[pars3$name == "COV_11"] <- TRUE
+            
+            fcmod <-
+              mirt(
+                ds[[i]][, 3:(n_itm + 2)],
+                model = model,
+                pars = pars3,
+                verbose = verbose,
+                technical = list(
+                  warn = all(!prog_bar, verbose),
+                  message = all(!prog_bar, verbose)
+                )
+              )
+            
+            if (verbose) {
+              cat("calibration - final\n")
+            }
+            
+            
+            fsc <-
+              data.frame(fscores(fcmod, full.scores = TRUE, method = fsc_method))
+            names(fsc) <- "ability_est"
+            t6 <- cbind(ds[[i]], fsc)
+            # names(t6) <- sub("F1","ability_est",names(t6))
+            names(t6) <- sub("theta1", "ability", names(t6))
+            
+            t6$ability_est <-
+              ifelse(t6$ability_est %in% c(Inf, -Inf),
+                     NA,
+                     t6$ability_est)
+            ### End generating individual ability estimates (factor scores)
+            
+            ### Begin standardizing factor scores and calculating unstandardized and standardized residuals
+            t6$resid <- t6$ability_est - t6$ability
+            
+            if (std_sample) {
+              # Standardized factor scores based on sample estimates
+              if (std_ref == 0) {
+                # standardize factor scores based on M and SD of full sample
+                t6$abil_est_st <-
+                  (t6$ability_est - mean(t6$ability_est, na.rm = TRUE)) / sd(t6$ability_est)
+              } else {
+                # standardize factor scores based on M and SD of chosen subgroup
+                t6$abil_est_st <-
+                  (t6$ability_est - mean(t6$ability_est[t6$group == std_ref], na.rm = TRUE)) /
+                  sd(t6$ability_est[t6$group == std_ref])
+              }
+            } else {
+              # Standardized factor scores informed by population parameters
+              t6$abil_est_st <-
+                (t6$ability_est - mean(t6$ability_est, na.rm = TRUE)) *
+                (sd(t6$ability) / sd(t6$ability_est, na.rm = TRUE)) +
+                mean(t6$ability) # linear equating to true ability metric
+            }
+            
+            t6$resid_st <- t6$abil_est_st - t6$ability
+            ### End standardizing factor scores and calculating unstandardized and standardized residuals
+            
+            t6$sample <- j
+            t6$rep_theta <- i
+            
+            
+            sim_summ[[i]] <-
+              t6[, c("ability",
+                     "ability_est",
+                     "resid",
+                     "abil_est_st",
+                     "resid_st",
+                     "group")]
+            
+            if (save_sims == TRUE) {
+              if (j == 1 & i == 1) {
+                sim_data <- t6
+              } else {
+                sim_data <- rbind(sim_data, t6)
+              }
+            }
+          } else {
+            if (verbose) {
+              cat(
+                "check 3 - pars1 and pars2 linking items have different numbers of parameters\n"
+              )
+            }
+            j <- j - 1
+          }
+        } else {
+          if (verbose) {
+            cat("check 4 - pars1 or pars2 are not dataframes\n")
+          }
+          j <- j - 1
+        }
+      }
+      ### This code block can be modified to output true ability, estimated
+      #   ability, and simulated datasets
+      # abil <- data.frame(matrix(ncol = length(sim_summ), nrow = 500))
+      # abil_est <- data.frame(matrix(ncol = length(sim_summ), nrow = 500))
+      # res <- data.frame(matrix(ncol = length(sim_summ), nrow = 500))
+      if (j == startj) {
+        # don't do these calculations and compile the data if j was reduced by 1
+        # due to failed checks.
+        stat <-
+          data.frame(matrix(nrow = 12, ncol = length(sim_summ)))
+        if (length(sim_summ) > 0) {
+          for (i in 1:length(sim_summ)) {
+            nm <- paste("dset_", i, sep = "")
+            # abil[,i] <- sim_summ[[i]]$ability
+            # names(abil)[i] <- nm
+            # abil_est[,i] <- sim_summ[[i]]$abil_est_st
+            # names(abil_est)[i] <- nm
+            # res[,i] <- sim_summ[[i]]$resid_st
+            # names(res)[i] <- nm
+            df <- sim_summ[[i]]
+            stat[1, i] <-
+              sqrt(mean(df[df$group == 1, "resid"] ^ 2, na.rm = TRUE))
+            stat[2, i] <-
+              sqrt(mean(df[df$group == 2, "resid"] ^ 2, na.rm = TRUE))
+            stat[3, i] <-
+              sqrt(mean(df[df$group == 1, "resid_st"] ^ 2, na.rm = TRUE))
+            stat[4, i] <-
+              sqrt(mean(df[df$group == 2, "resid_st"] ^ 2, na.rm = TRUE))
+            stat[5, i] <-
+              mean(df[df$group == 1, "ability_est"], na.rm = TRUE)
+            stat[6, i] <-
+              mean(df[df$group == 2, "ability_est"], na.rm = TRUE)
+            stat[7, i] <-
+              mean(df[df$group == 1, "abil_est_st"], na.rm = TRUE)
+            stat[8, i] <-
+              mean(df[df$group == 2, "abil_est_st"], na.rm = TRUE)
+            stat[9, i] <-
+              sd(df[df$group == 1, "ability_est"], na.rm = TRUE)
+            stat[10, i] <-
+              sd(df[df$group == 2, "ability_est"], na.rm = TRUE)
+            stat[11, i] <-
+              sd(df[df$group == 1, "abil_est_st"], na.rm = TRUE)
+            stat[12, i] <-
+              sd(df[df$group == 2, "abil_est_st"], na.rm = TRUE)
+            stat[13, i] <- sqrt(mean(df[, "resid"] ^ 2, na.rm = TRUE))
+            stat[14, i] <- sqrt(mean(df[, "resid_st"] ^ 2, na.rm = TRUE))
+            stat[15, i] <- mean(df[, "ability_est"], na.rm = TRUE)
+            stat[16, i] <- mean(df[, "abil_est_st"], na.rm = TRUE)
+            stat[17, i] <- sd(df[, "ability_est"], na.rm = TRUE)
+            stat[18, i] <- sd(df[, "abil_est_st"], na.rm = TRUE)
+            stat[19, i] <- grp_mean[1]
+            stat[20, i] <- grp_mean[2]
+            stat[21, i] <-
+              weighted.mean(grp_mean, c(n_samp1, n_samp2))
+            
+            
+            if (rel) {
+              # Playing around with some different reliability statistics.
+              stat[22, i] <-
+                cor.test(df$ability[df$group == 1], df$ability_est[df$group == 1])$estimate
+              stat[23, i] <-
+                cor.test(df$ability[df$group == 2], df$ability_est[df$group == 2])$estimate
+              stat[24, i] <-
+                cor.test(df$ability, df$ability_est)$estimate
+              stat[25, i] <-
+                icc(df[df$group == 1, c("ability", "ability_est")],
+                    model = "twoway",
+                    type = "consistency",
+                    unit = "single")$value # ICC(C,1)
+              stat[26, i] <-
+                icc(df[df$group == 2, c("ability", "ability_est")],
+                    model = "twoway",
+                    type = "consistency",
+                    unit = "single")$value # ICC(C,1)
+              stat[27, i] <-
+                icc(df[c("ability", "ability_est")],
+                    model = "twoway",
+                    type = "consistency",
+                    unit = "single")$value # ICC(C,1)
+            }
+            
+            names(stat)[i] <- nm
+            
+            if (rel) {
+              stat[c(1, 3, 5, 7, 9, 11, 19, 22, 25), "group"] <- 1
+              stat[c(2, 4, 6, 8, 10, 12, 20, 23, 26), "group"] <- 2
+              stat[c(13:18, 21, 24, 27), "group"] <- 0
+              stat[c(1, 2, 5, 6, 9, 10, 13, 15, 17, 19:27), "type"] <-
+                "raw"
+              stat[c(3, 4, 7, 8, 11, 12, 14, 16, 18), "type"] <-
+                "standardized"
+              stat[c(1:4, 13:14), "statistic"] <- "rmse"
+              stat[c(5:8, 15:16), "statistic"] <- "est_mean"
+              stat[c(9:12, 17:18), "statistic"] <- "est_sd"
+              stat[c(19:21), "statistic"] <- "theta"
+              stat[c(22:24), "statistic"] <- "r_theta_est"
+              stat[c(25:27), "statistic"] <- "ICC_C_1"
+            } else {
+              stat[c(1, 3, 5, 7, 9, 11, 19), "group"] <- 1
+              stat[c(2, 4, 6, 8, 10, 12, 20), "group"] <- 2
+              stat[c(13:18, 21), "group"] <- 0
+              stat[c(1, 2, 5, 6, 9, 10, 13, 15, 17, 19:21), "type"] <-
+                "raw"
+              stat[c(3, 4, 7, 8, 11, 12, 14, 16, 18), "type"] <-
+                "standardized"
+              stat[c(1:4, 13:14), "statistic"] <- "rmse"
+              stat[c(5:8, 15:16), "statistic"] <- "est_mean"
+              stat[c(9:12, 17:18), "statistic"] <- "est_sd"
+              stat[c(19:21), "statistic"] <- "theta"
+            }
+            
+            stat$samp_num <- j
+          } # end for i
+        }
+        if (j > 0) {
+          if (j == 1) {
+            stat_summ <- stat
+          } else {
+            stat_summ <- rbind(stat_summ, stat)
+          }
+        }
+        if (verbose) {
+          cat(
+            paste(
+              " ############################# Iteration - ",
+              j,
+              " of ",
+              n_rep,
+              ". Elapsed time: ",
+              Sys.time() - time,
+              "\n",
+              sep = ""
+            )
+          )
+        }
+        if (prog_bar)
+          pb$tick()$print()
+      }
+    } # end while j
+    if (n_rep_theta == 1) {
+      stat_summ$avg <- stat_summ$dset_1
+    } else {
+      stat_summ$avg <- apply(stat_summ[, 1:n_rep], 1, mean)
+    }
+    sim_results <- list()
+    sim_results[["summary"]] <- stat_summ
+    if (save_sims == TRUE) {
+      vnms <- c(
+        "ability",
+        "ability_est",
+        "resid",
+        "abil_est_st",
+        "resid_st",
+        "group",
+        "sample",
+        "rep_theta"
+      )
+      itnms <- names(sim_data[!names(sim_data) %in% vnms])
+      sim_results[["datasets"]] <- sim_data[, c(vnms, itnms)]
+    }
+    if (save_log)
+      simEnd <- Sys.time()
+      runTime <- simEnd - simBegin
+      cat("\n\n Total time to run scenario:", runTime)
+      sink()
+    return(sim_results)
+  }
+  closeAllConnections()
+}
+```
+
+### infoSim
+
+
+```r
+# infoSim is a function that uses R mirt item response theory (IRT) methods
+# to: 1) simulate an item level dataset based on item parameters, 2) perform an IRT
+# calibrations on the simulated dataset, and 3) calculate test information values
+# across a range of ability values. It estimates test information for two groups
+# that can have different distributions of ability, and different items can be
+# used for the two groups.
+
+# Parameters:
+#   seed - random seed for simulations (default=NULL)
+#   grp_mean - true ability means of the two groups (default=c(0.5,-0.5))
+#   grp_sd - true ability standard deviations of the two groups (default=c(1,1))
+#   n_samp - sample size of each group in each simulation (default=500)
+#   pars - mirt item parameters file (default=mcal_par)
+#     A parameter file can be generated by:
+# #       mcal_par <- mirt(df,mdl,pars='values') where df is a dataframe with
+# #         item response data and mdl is a mirt model object. The returned file
+# #         (mcal_par in this example) can be edited to change item parameters.
+# #   itms1 - list of items available for group 1 (default=item_list_1)
+# #   itms2 - list of items available for group 2 (default=item_list_2)
+# This function returns a dataframe with ability values and corresponding test
+# information values. This dataset can be use to graph a test information curve.
+
+infoSim <- function(seed = NULL,
+                    grp_mean = c(0.5, -0.5),
+                    grp_sd = c(1, 1),
+                    n_samp = 500,
+                    pars = mcal_par,
+                    itms1 = item_list_1,
+                    itms2 = item_list_2) {
+  diff <- pars[pars$name == "d", "value"]
+  disc <- pars[pars$name == "a1", "value"]
+  n_itm <- nrow(pars[pars$name == 'a1', ])
+  links <- intersect(itms1, itms2)
+  set.seed(seed)
+  
+  theta1 <- data.frame(rnorm(n_samp, grp_mean[1], grp_sd[1]))
+  names(theta1) <- "theta1"
+  theta1$group <- 1
+  theta2 <- data.frame(rnorm(n_samp, grp_mean[2], grp_sd[2]))
+  names(theta2) <- "theta1"
+  theta2$group <- 2
+  theta1 <- rbind(theta1, theta2)
+  
+  ds <-
+    data.frame(simdata(
+      disc,
+      diff,
+      n_samp,
+      Theta = as.matrix(theta1$theta1),
+      itemtype = '2PL'
+    ))
+  names(ds) <- unique(pars[!pars$item == "GROUP", "item"])
+  ds <- cbind(theta1, ds)
+  
+  for (group in 1:2) {
+    if (group == 1) {
+      ds[ds$group == 1, !names(ds) %in% c("theta1", "group", itms1)] <- NA
+    } else {
+      ds[ds$group == 2, !names(ds) %in% c("theta1", "group", itms2)] <- NA
+    }
+  }
+  
+  pars1 <- pars[pars$item %in% c(itms1, "GROUP"), ]
+  pars1$parnum <- 1:nrow(pars1)
+  pars1[pars1$name == "d" & !pars1$item %in% links, "est"] <- TRUE
+  pars1[pars1$name == "a1" & !pars1$item %in% links, "est"] <- TRUE
+  
+  pars2 <- pars[pars$item %in% c(itms2, "GROUP"), ]
+  pars2$parnum <- 1:nrow(pars2)
+  pars2[pars2$name == "d" & !pars2$item %in% links, "est"] <- TRUE
+  pars2[pars2$name == "a1" & !pars2$item %in% links, "est"] <- TRUE
+  
+  n_itm_1 <- nrow(pars1[pars1$name == 'a1', ])
+  n_itm_2 <- nrow(pars2[pars2$name == 'a1', ])
+  
+  mdl1 <- mirt.model(paste("cog = 1-", n_itm_1, sep = ""))
+  mdl2 <- mirt.model(paste("cog = 1-", n_itm_2, sep = ""))
+  
+  
+  Theta <- matrix(seq(-4, 4, by = .1))
+  
+  mcal1 <- mirt(ds[ds$group %in% 1, names(ds) %in% itms1],
+                model = mdl1,
+                modelitemtype = '2PL',
+                pars = pars1)
+  mcal2 <- mirt(ds[ds$group %in% 2, names(ds) %in% itms2],
+                model = mdl2,
+                modelitemtype = '2PL',
+                pars = pars2)
+  tinfo1 <- testinfo(mcal1, Theta)
+  tinfo2 <- testinfo(mcal2, Theta)
+  tinfo <- data.frame(cbind(Theta, tinfo1, tinfo2))
+  names(tinfo) <- c("ability", "info_1", "info_2")
+  
+  return(tinfo)
+}
+```
+
+### infoCalc
+
+
+```r
+# infoCalc is a function that generates test information values for a range of
+# abilities based on a mirt results object (mirt_model_obj). It returns a
+# dataframe with ability values and corresponding test information values.
+# This dataset can be use to graph a test information curve.
+
+infoCalc <- function(mirt_mod_obj) {
+  theta <- matrix(seq(-4, 4, by = .1))
+  tinfo <- testinfo(mirt_mod_obj, theta)
+  tinfo <- data.frame(cbind(theta, tinfo))
+  names(tinfo) <- c("ability", "information")
+  
+  return(tinfo)
+}
+```
+
+### summaryStats
+
+
+```r
+# summaryStats is a function that calculates means and other performance metrics
+# across simulated datasets of summary statistics (rmse, rmse_st, mean, mean_st, sd sd_st)
+# returned by equateSim.
+#
+# Parameters:
+#   df - data.frame of summary statistics for each simulated dataset returned
+#     by equateSim
+#
+# summaryStats returns a dataframe with the means across simulated datasets of
+# rmse, rmse_st, mean, mean_st, and sd sd_st for each group as well as the
+# simple average of both groups. It includes a group variable (Group 1,
+# Group 2, Combined)
+
+summaryStats <- function(df) {
+  library(tidyverse)
+  df$label <- df$statistic
+  df$label[df$type == "standardized"] <-
+    df$label[df$type == "standardized"] %>%
+    paste0(., "_st")
+  df$label <- df$label %>%
+    gsub("est_", "", ., fixed = TRUE)
+  
+  sumout <- df %>%
+    group_by(group, label) %>%
+    summarise(value = mean(avg)) %>%
+    pivot_wider(names_from = label, values_from = value)
+  
+  # Not run: calculate confidence intervals for the means
+  # ciM <- df %>%
+  #   filter(statistic == "est_mean") %>%
+  #   group_by(group, label) %>%
+  #   summarise(lowCI = quantile(avg, (1-ci)/2),
+  #             upCI = quantile(avg, (1+ci)/2)) %>%
+  #   rename_at(c("lowCI", "upCI"), list(~paste0(., 100*ci, "m"))) %>%
+  #   pivot_wider(names_from = label, values_from = names(.)[3:4])
+  #
+  # sumout <- left_join(sumout, ciM, by = "group")
+  
+  # Calculate the empirical standard error for the means
+  ese <- df %>%
+    filter(statistic == "est_mean") %>%
+    group_by(group, label) %>%
+    summarise(ese = sd(avg)) %>%
+    pivot_wider(names_from = label, values_from = ese) %>%
+    rename(ese = mean, ese_st = mean_st)
+  
+  sumout <- left_join(sumout, ese, by = "group")
+  
+  sumout$group <-
+    car::recode(sumout$group, '0="Combined"; 1 = "Group 1"; 2 = "Group 2"')
+  sumout <- sumout[c(2, 3, 1), ]
+  
+  # Calculate relative bias in the unstandardized grand means.
+  # Constant of 1 added for Group 1, whose population mean is 0.
+  sumout$bias <- NA
+  sumout$bias_pct <- NA
+  
+  for (i in 1:nrow(sumout)) {
+    sumout$bias[i] <-
+      sumout$mean[i] - sumout$theta[i]
+    sumout$bias_pct[i] <-
+      (sumout$mean[i] - sumout$theta[i]) / abs(sumout$theta[i])
+  }
+  
+  
+  # Calculate relative bias in the standardized grand means.
+  # Constant of 1 added for Group 1, whose population mean is 0.
+  sumout$bias_st <- NA
+  sumout$bias_pct_st <- NA
+  
+  for (i in 1:nrow(sumout)) {
+    sumout$bias_st[i] <-
+      sumout$mean_st[i] - sumout$theta[i]
+    sumout$bias_pct_st[i] <-
+      (sumout$mean_st[i] - sumout$theta[i]) / abs(sumout$theta[i])
+  }
+  
+  
+  sumout$n_rep <- length(unique(df$samp_num))
+  sumout <- sumout %>%
+    dplyr::select(
+      group,
+      theta,
+      starts_with("mean"),
+      starts_with("sd"),
+      starts_with("rmse"),
+      starts_with("ese"),
+      starts_with("bias"),
+      everything()
+    )
+  
+  return(sumout)
+  
+  
+  # rmse_grp_1 <- mean(df[df$group == 1 & df$type == "raw" &
+  #                         df$statistic == "rmse","avg"])
+  # rmse_grp_2 <- mean(df[df$group == 2 & df$type == "raw" &
+  #                         df$statistic == "rmse","avg"])
+  # rmse_grp_0 <- mean(df[df$group == 0 & df$type == "raw" &
+  #                         df$statistic == "rmse","avg"])
+  # rmse_st_grp_1 <- mean(df[df$group == 1 & df$type == "standardized" &
+  #                            df$statistic == "rmse","avg"])
+  # rmse_st_grp_2 <- mean(df[df$group == 2 & df$type == "standardized" &
+  #                            df$statistic == "rmse","avg"])
+  # rmse_st_grp_0 <- mean(df[df$group == 0 & df$type == "standardized" &
+  #                            df$statistic == "rmse","avg"])
+  # mean_grp_1 <- mean(df[df$group == 1 & df$type == "raw" &
+  #                         df$statistic == "est_mean","avg"])
+  # mean_grp_2 <- mean(df[df$group == 2 & df$type == "raw" &
+  #                         df$statistic == "est_mean","avg"])
+  # mean_grp_0 <- mean(df[df$group == 0 & df$type == "raw" &
+  #                         df$statistic == "est_mean","avg"])
+  # mean_st_grp_1 <- mean(df[df$group == 1 & df$type == "standardized" &
+  #                            df$statistic == "est_mean","avg"])
+  # mean_st_grp_2 <- mean(df[df$group == 2 & df$type == "standardized" &
+  #                            df$statistic == "est_mean","avg"])
+  # mean_st_grp_0 <- mean(df[df$group == 0 & df$type == "standardized" &
+  #                            df$statistic == "est_mean","avg"])
+  # sd_grp_1 <- mean(df[df$group == 1 & df$type == "raw" &
+  #                       df$statistic == "est_sd","avg"])
+  # sd_grp_2 <- mean(df[df$group == 2 & df$type == "raw" &
+  #                       df$statistic == "est_sd","avg"])
+  # sd_grp_0 <- mean(df[df$group == 0 & df$type == "raw" &
+  #                       df$statistic == "est_sd","avg"])
+  # sd_st_grp_1 <- mean(df[df$group == 1 & df$type == "standardized" &
+  #                          df$statistic == "est_sd","avg"])
+  # sd_st_grp_2 <- mean(df[df$group == 2 & df$type == "standardized" &
+  #                          df$statistic == "est_sd","avg"])
+  # sd_st_grp_0 <- mean(df[df$group == 0 & df$type == "standardized" &
+  #                          df$statistic == "est_sd","avg"])
+  # # rmse12 <- mean(rmse_grp_1,rmse_grp_2)
+  # # rmse_st12 <- mean(rmse_st_grp_1,rmse_st_grp_2)
+  # # mean12 <- mean(mean_grp_1,mean_grp_2)
+  # # mean_st12 <- mean(mean_st_grp_1,mean_st_grp_2)
+  # # sd12 <- mean(sd_grp_1,sd_grp_2)
+  # # sd_st12 <- mean(sd_st_grp_1,sd_st_grp_2)
+  #
+  # nms <- c("rmse","rmse_st","mean","mean_st","sd","sd_st")
+  # stat_1 <- data.frame(cbind(rmse_grp_1,rmse_st_grp_1,mean_grp_1,mean_st_grp_1,
+  #                            sd_grp_1,sd_st_grp_1))
+  # names(stat_1) <- nms
+  # stat_1$group <- 1
+  # stat_2 <- data.frame(cbind(rmse_grp_2,rmse_st_grp_2,mean_grp_2,mean_st_grp_2,
+  #                            sd_grp_2,sd_st_grp_2))
+  # names(stat_2) <- nms
+  # stat_2$group <- 2
+  # stat_12 <- data.frame(cbind(rmse_grp_0,rmse_st_grp_0,mean_grp_0,mean_st_grp_0,
+  #                             sd_grp_0,sd_st_grp_0))
+  # names(stat_12) <- nms
+  # stat_12$group <- 0
+  #
+  # stat <- rbind(stat_1,stat_2,stat_12)
+  # stat$group <- factor(stat$group,levels=c(0,1,2),
+  #                      labels=c("Combined","Group 1","Group 2"))
+  # return(stat)
+}
+```
+
+## Calibration
+
+
+```r
+# *********************** mirt calibration of PITCH TICS ***********************
+
+### mirt calibration of tics
+
+# input PITCH tics dataset
+tics <- read.csv("Data/PITCH-response-data-fhl.csv")
+
+# HRS items
+vars <- c('UBAK','UDAT','UDAY','UDWR','UIWR','UMON','UNM1','UNM2','UNM5','UNM6',
+          'USUB','UYER')
+# MHAS items
+varsm <- c("UDAY","UFCO2","UFRE1","UMON","UVSC","UWD","UWR1","UWR2","UWR3","UYER")
+
+# select HRS items and persons
+hrs <- tics[tics$study_name_short %in% c("HRS_CODA_W6","HRS_W6"),c("newid",
+                                                                   "study_wave_number","study_name_short",vars)]
+hrs$n_itm <- apply(hrs[,vars],1,function(x) sum(!is.na(x)))
+hrs <- hrs[!hrs$n_itm ==0,]
+
+m1hrs <- mirt.model('cog = 1-12') # creates mirt model object
+hrs_par <- mirt(hrs[,vars],m1hrs,pars='values') # generates item parameters file that can be edited to guide further analyses
+
+hrscal <- mirt(hrs[,vars],m1hrs,pars=hrs_par) # IRT calibration
+```
+
+```
+## Iteration: 1, Log-Lik: -111928.037, Max-Change: 2.27949Iteration: 2, Log-Lik: -108633.355, Max-Change: 1.21871Iteration: 3, Log-Lik: -106845.807, Max-Change: 1.01232Iteration: 4, Log-Lik: -105892.216, Max-Change: 1.14507Iteration: 5, Log-Lik: -105126.057, Max-Change: 0.87762Iteration: 6, Log-Lik: -104852.156, Max-Change: 0.62611Iteration: 7, Log-Lik: -104686.042, Max-Change: 0.59372Iteration: 8, Log-Lik: -104547.196, Max-Change: 0.37954Iteration: 9, Log-Lik: -104509.662, Max-Change: 0.25161Iteration: 10, Log-Lik: -104493.882, Max-Change: 0.15021Iteration: 11, Log-Lik: -104484.194, Max-Change: 0.04976Iteration: 12, Log-Lik: -104475.155, Max-Change: 0.10627Iteration: 13, Log-Lik: -104471.943, Max-Change: 0.10315Iteration: 14, Log-Lik: -104469.723, Max-Change: 0.05354Iteration: 15, Log-Lik: -104468.046, Max-Change: 0.02261Iteration: 16, Log-Lik: -104465.715, Max-Change: 0.03233Iteration: 17, Log-Lik: -104463.820, Max-Change: 0.01109Iteration: 18, Log-Lik: -104463.128, Max-Change: 0.01637Iteration: 19, Log-Lik: -104462.565, Max-Change: 0.00588Iteration: 20, Log-Lik: -104462.351, Max-Change: 0.00574Iteration: 21, Log-Lik: -104462.187, Max-Change: 0.00348Iteration: 22, Log-Lik: -104462.112, Max-Change: 0.00373Iteration: 23, Log-Lik: -104462.030, Max-Change: 0.00219Iteration: 24, Log-Lik: -104461.984, Max-Change: 0.02066Iteration: 25, Log-Lik: -104461.902, Max-Change: 0.00256Iteration: 26, Log-Lik: -104461.868, Max-Change: 0.00165Iteration: 27, Log-Lik: -104461.849, Max-Change: 0.00197Iteration: 28, Log-Lik: -104461.831, Max-Change: 0.01176Iteration: 29, Log-Lik: -104461.792, Max-Change: 0.00253Iteration: 30, Log-Lik: -104461.788, Max-Change: 0.00048Iteration: 31, Log-Lik: -104461.787, Max-Change: 0.00026Iteration: 32, Log-Lik: -104461.785, Max-Change: 0.00026Iteration: 33, Log-Lik: -104461.784, Max-Change: 0.00008
+```
+
+```r
+# coef(hrscal)
+# coef(hrscal, IRTpars = TRUE)
+
+m2hrs <- mirt.model('cog = 1-11')
+
+# HRS calibration excluding delayed word recall
+hrs_par_0dr <- mirt(hrs[,vars[!vars %in% "UDWR"]],m2hrs,pars='values')
+hrscal_0dr <- mirt(hrs[,vars[!vars %in% "UDWR"]],m2hrs,pars=hrs_par_0dr)
+```
+
+```
+## Iteration: 1, Log-Lik: -80935.243, Max-Change: 1.57580Iteration: 2, Log-Lik: -79811.967, Max-Change: 0.50476Iteration: 3, Log-Lik: -79621.592, Max-Change: 0.39486Iteration: 4, Log-Lik: -79519.691, Max-Change: 0.20910Iteration: 5, Log-Lik: -79477.758, Max-Change: 0.17943Iteration: 6, Log-Lik: -79451.114, Max-Change: 0.10016Iteration: 7, Log-Lik: -79433.267, Max-Change: 0.04746Iteration: 8, Log-Lik: -79424.291, Max-Change: 0.03439Iteration: 9, Log-Lik: -79418.602, Max-Change: 0.07186Iteration: 10, Log-Lik: -79408.948, Max-Change: 0.03062Iteration: 11, Log-Lik: -79407.084, Max-Change: 0.02384Iteration: 12, Log-Lik: -79405.876, Max-Change: 0.02305Iteration: 13, Log-Lik: -79405.360, Max-Change: 0.00652Iteration: 14, Log-Lik: -79405.153, Max-Change: 0.00521Iteration: 15, Log-Lik: -79405.025, Max-Change: 0.00607Iteration: 16, Log-Lik: -79404.771, Max-Change: 0.00100Iteration: 17, Log-Lik: -79404.764, Max-Change: 0.00073Iteration: 18, Log-Lik: -79404.756, Max-Change: 0.00075Iteration: 19, Log-Lik: -79404.754, Max-Change: 0.00031Iteration: 20, Log-Lik: -79404.753, Max-Change: 0.00040Iteration: 21, Log-Lik: -79404.752, Max-Change: 0.00022Iteration: 22, Log-Lik: -79404.752, Max-Change: 0.00018Iteration: 23, Log-Lik: -79404.752, Max-Change: 0.00030Iteration: 24, Log-Lik: -79404.751, Max-Change: 0.00009
+```
+
+```r
+# HRS calibration excluding immediate word recall
+hrs_par_0ir <- mirt(hrs[,vars[!vars %in% "UIWR"]],m2hrs,pars='values',
+                    technical=list(removeEmptyRows=TRUE))
+hrscal_0ir <- mirt(hrs[,vars[!vars %in% "UIWR"]],m2hrs,pars=hrs_par_0ir,
+                   technical=list(removeEmptyRows=TRUE))
+```
+
+```
+## Iteration: 1, Log-Lik: -82183.632, Max-Change: 1.71471Iteration: 2, Log-Lik: -80450.949, Max-Change: 0.80508Iteration: 3, Log-Lik: -80121.959, Max-Change: 0.25270Iteration: 4, Log-Lik: -80010.923, Max-Change: 0.30971Iteration: 5, Log-Lik: -79981.252, Max-Change: 0.19185Iteration: 6, Log-Lik: -79972.145, Max-Change: 0.11751Iteration: 7, Log-Lik: -79968.199, Max-Change: 0.07085Iteration: 8, Log-Lik: -79966.330, Max-Change: 0.02168Iteration: 9, Log-Lik: -79965.413, Max-Change: 0.04092Iteration: 10, Log-Lik: -79964.892, Max-Change: 0.00685Iteration: 11, Log-Lik: -79964.737, Max-Change: 0.00357Iteration: 12, Log-Lik: -79964.677, Max-Change: 0.00290Iteration: 13, Log-Lik: -79964.611, Max-Change: 0.00079Iteration: 14, Log-Lik: -79964.607, Max-Change: 0.00014Iteration: 15, Log-Lik: -79964.606, Max-Change: 0.00031Iteration: 16, Log-Lik: -79964.606, Max-Change: 0.00019Iteration: 17, Log-Lik: -79964.605, Max-Change: 0.00008
+```
+
+```r
+# coef(hrscal_0ir)
+
+#  mirt calibration of MHAS 
+
+mex <- tics[tics$study_name_short %in% c("MHAS_W1","MHAS_W2"),c("newid",
+                                                                "study_wave_number","study_name_short",varsm)]
+mex$n_itm <- apply(mex[,varsm],1,function(x) sum(!is.na(x)))
+mex <- mex[!mex$n_itm ==0,]
+
+m1mex <- mirt.model('cog = 1-10')
+mex_par <- mirt(mex[,varsm],m1mex,pars='values')
+
+mexcal <- mirt(mex[,varsm],m1mex,pars=mex_par)
+```
+
+```
+## Iteration: 1, Log-Lik: -285000.929, Max-Change: 3.84854Iteration: 2, Log-Lik: -276207.535, Max-Change: 0.54094Iteration: 3, Log-Lik: -272056.026, Max-Change: 0.48553Iteration: 4, Log-Lik: -270345.752, Max-Change: 0.32441Iteration: 5, Log-Lik: -269751.843, Max-Change: 0.18129Iteration: 6, Log-Lik: -269425.484, Max-Change: 0.11185Iteration: 7, Log-Lik: -269222.460, Max-Change: 0.08589Iteration: 8, Log-Lik: -269096.156, Max-Change: 0.07228Iteration: 9, Log-Lik: -268997.318, Max-Change: 0.06122Iteration: 10, Log-Lik: -268920.303, Max-Change: 0.04204Iteration: 11, Log-Lik: -268873.626, Max-Change: 0.04256Iteration: 12, Log-Lik: -268833.726, Max-Change: 0.03572Iteration: 13, Log-Lik: -268803.774, Max-Change: 0.02744Iteration: 14, Log-Lik: -268782.072, Max-Change: 0.02903Iteration: 15, Log-Lik: -268761.902, Max-Change: 0.01713Iteration: 16, Log-Lik: -268754.143, Max-Change: 0.02157Iteration: 17, Log-Lik: -268742.850, Max-Change: 0.01147Iteration: 18, Log-Lik: -268738.270, Max-Change: 0.00902Iteration: 19, Log-Lik: -268725.440, Max-Change: 0.01115Iteration: 20, Log-Lik: -268721.456, Max-Change: 0.00890Iteration: 21, Log-Lik: -268719.463, Max-Change: 0.00759Iteration: 22, Log-Lik: -268715.255, Max-Change: 0.00330Iteration: 23, Log-Lik: -268714.972, Max-Change: 0.00277Iteration: 24, Log-Lik: -268714.660, Max-Change: 0.00244Iteration: 25, Log-Lik: -268713.950, Max-Change: 0.00226Iteration: 26, Log-Lik: -268713.851, Max-Change: 0.00193Iteration: 27, Log-Lik: -268713.792, Max-Change: 0.00117Iteration: 28, Log-Lik: -268713.776, Max-Change: 0.00117Iteration: 29, Log-Lik: -268713.735, Max-Change: 0.00176Iteration: 30, Log-Lik: -268713.696, Max-Change: 0.00128Iteration: 31, Log-Lik: -268713.616, Max-Change: 0.00079Iteration: 32, Log-Lik: -268713.597, Max-Change: 0.00050Iteration: 33, Log-Lik: -268713.594, Max-Change: 0.00026Iteration: 34, Log-Lik: -268713.593, Max-Change: 0.00042Iteration: 35, Log-Lik: -268713.591, Max-Change: 0.00058Iteration: 36, Log-Lik: -268713.587, Max-Change: 0.00032Iteration: 37, Log-Lik: -268713.586, Max-Change: 0.00012Iteration: 38, Log-Lik: -268713.585, Max-Change: 0.00041Iteration: 39, Log-Lik: -268713.583, Max-Change: 0.00045Iteration: 40, Log-Lik: -268713.580, Max-Change: 0.00012Iteration: 41, Log-Lik: -268713.579, Max-Change: 0.00040Iteration: 42, Log-Lik: -268713.577, Max-Change: 0.00044Iteration: 43, Log-Lik: -268713.574, Max-Change: 0.00011Iteration: 44, Log-Lik: -268713.573, Max-Change: 0.00038Iteration: 45, Log-Lik: -268713.571, Max-Change: 0.00042Iteration: 46, Log-Lik: -268713.569, Max-Change: 0.00011Iteration: 47, Log-Lik: -268713.568, Max-Change: 0.00036Iteration: 48, Log-Lik: -268713.566, Max-Change: 0.00040Iteration: 49, Log-Lik: -268713.564, Max-Change: 0.00010Iteration: 50, Log-Lik: -268713.563, Max-Change: 0.00035Iteration: 51, Log-Lik: -268713.561, Max-Change: 0.00039Iteration: 52, Log-Lik: -268713.559, Max-Change: 0.00010
+```
+
+```r
+# coef(mexcal)
+
+#  mirt calibration of combined HRS and MHAS 
+
+hrme <- tics[tics$study_name_short %in% c("HRS_CODA_W6","HRS_W6") |
+               tics$study_name_short %in% c("MHAS_W1","MHAS_W2"),c("newid",
+                                                                   "study_wave_number","study_name_short",union(vars,varsm))]
+hrme$n_itm <- apply(hrme[,union(vars,varsm)],1,function(x) sum(!is.na(x)))
+hrme <- hrme[!hrme$n_itm == 0,]
+
+m1hrme <- mirt.model('cog = 1-19')
+hrme_par <- mirt(hrme[,union(vars,varsm)],m1hrme,pars='values')
+
+
+hrmecal <- mirt(data = hrme[,union(vars,varsm)], model = m1hrme, pars = hrme_par)
+```
+
+```
+## Iteration: 1, Log-Lik: -480447.406, Max-Change: 2.63609Iteration: 2, Log-Lik: -411584.405, Max-Change: 3.98811Iteration: 3, Log-Lik: -391996.748, Max-Change: 1.25539Iteration: 4, Log-Lik: -384553.403, Max-Change: 1.03719Iteration: 5, Log-Lik: -381568.938, Max-Change: 0.80248Iteration: 6, Log-Lik: -379965.415, Max-Change: 0.78798Iteration: 7, Log-Lik: -378565.874, Max-Change: 0.71767Iteration: 8, Log-Lik: -377678.154, Max-Change: 0.50929Iteration: 9, Log-Lik: -377281.711, Max-Change: 0.40168Iteration: 10, Log-Lik: -376892.551, Max-Change: 0.20169Iteration: 11, Log-Lik: -376658.903, Max-Change: 0.20600Iteration: 12, Log-Lik: -376434.213, Max-Change: 0.14315Iteration: 13, Log-Lik: -376286.830, Max-Change: 0.13177Iteration: 14, Log-Lik: -376162.063, Max-Change: 0.10527Iteration: 15, Log-Lik: -376041.898, Max-Change: 0.07389Iteration: 16, Log-Lik: -375923.788, Max-Change: 0.06376Iteration: 17, Log-Lik: -375841.758, Max-Change: 0.05819Iteration: 18, Log-Lik: -375773.757, Max-Change: 0.04702Iteration: 19, Log-Lik: -375717.628, Max-Change: 0.04372Iteration: 20, Log-Lik: -375684.318, Max-Change: 0.04200Iteration: 21, Log-Lik: -375662.292, Max-Change: 0.02694Iteration: 22, Log-Lik: -375632.607, Max-Change: 0.02944Iteration: 23, Log-Lik: -375620.234, Max-Change: 0.03289Iteration: 24, Log-Lik: -375608.508, Max-Change: 0.02925Iteration: 25, Log-Lik: -375598.025, Max-Change: 0.01971Iteration: 26, Log-Lik: -375583.304, Max-Change: 0.02102Iteration: 27, Log-Lik: -375577.218, Max-Change: 0.01490Iteration: 28, Log-Lik: -375567.996, Max-Change: 0.02146Iteration: 29, Log-Lik: -375557.459, Max-Change: 0.01564Iteration: 30, Log-Lik: -375551.953, Max-Change: 0.01531Iteration: 31, Log-Lik: -375547.345, Max-Change: 0.01436Iteration: 32, Log-Lik: -375544.830, Max-Change: 0.01205Iteration: 33, Log-Lik: -375542.961, Max-Change: 0.01055Iteration: 34, Log-Lik: -375539.886, Max-Change: 0.00867Iteration: 35, Log-Lik: -375538.282, Max-Change: 0.00732Iteration: 36, Log-Lik: -375536.903, Max-Change: 0.01240Iteration: 37, Log-Lik: -375534.318, Max-Change: 0.00711Iteration: 38, Log-Lik: -375533.489, Max-Change: 0.00437Iteration: 39, Log-Lik: -375533.013, Max-Change: 0.00386Iteration: 40, Log-Lik: -375531.447, Max-Change: 0.01455Iteration: 41, Log-Lik: -375531.145, Max-Change: 0.00218Iteration: 42, Log-Lik: -375531.077, Max-Change: 0.00175Iteration: 43, Log-Lik: -375531.002, Max-Change: 0.00178Iteration: 44, Log-Lik: -375530.910, Max-Change: 0.00038Iteration: 45, Log-Lik: -375530.906, Max-Change: 0.00018Iteration: 46, Log-Lik: -375530.905, Max-Change: 0.00060Iteration: 47, Log-Lik: -375530.891, Max-Change: 0.00027Iteration: 48, Log-Lik: -375530.889, Max-Change: 0.00017Iteration: 49, Log-Lik: -375530.888, Max-Change: 0.00095Iteration: 50, Log-Lik: -375530.871, Max-Change: 0.00066Iteration: 51, Log-Lik: -375530.860, Max-Change: 0.00061Iteration: 52, Log-Lik: -375530.850, Max-Change: 0.00033Iteration: 53, Log-Lik: -375530.847, Max-Change: 0.00018Iteration: 54, Log-Lik: -375530.846, Max-Change: 0.00012Iteration: 55, Log-Lik: -375530.845, Max-Change: 0.00024Iteration: 56, Log-Lik: -375530.839, Max-Change: 0.00013Iteration: 57, Log-Lik: -375530.838, Max-Change: 0.00042Iteration: 58, Log-Lik: -375530.836, Max-Change: 0.00053Iteration: 59, Log-Lik: -375530.832, Max-Change: 0.00034Iteration: 60, Log-Lik: -375530.831, Max-Change: 0.00020Iteration: 61, Log-Lik: -375530.830, Max-Change: 0.00029Iteration: 62, Log-Lik: -375530.826, Max-Change: 0.00034Iteration: 63, Log-Lik: -375530.824, Max-Change: 0.00020Iteration: 64, Log-Lik: -375530.823, Max-Change: 0.00029Iteration: 65, Log-Lik: -375530.820, Max-Change: 0.00033Iteration: 66, Log-Lik: -375530.818, Max-Change: 0.00020Iteration: 67, Log-Lik: -375530.817, Max-Change: 0.00029Iteration: 68, Log-Lik: -375530.814, Max-Change: 0.00034Iteration: 69, Log-Lik: -375530.813, Max-Change: 0.00020Iteration: 70, Log-Lik: -375530.812, Max-Change: 0.00031Iteration: 71, Log-Lik: -375530.809, Max-Change: 0.00037Iteration: 72, Log-Lik: -375530.808, Max-Change: 0.00022Iteration: 73, Log-Lik: -375530.807, Max-Change: 0.00036Iteration: 74, Log-Lik: -375530.805, Max-Change: 0.00045Iteration: 75, Log-Lik: -375530.803, Max-Change: 0.00027Iteration: 76, Log-Lik: -375530.802, Max-Change: 0.00009
+```
+
+```r
+# hrmecal <- mirt(hrme[,union(vars,varsm)],m1hrme)
+# coef(hrmecal)
+# parameters(hrmecal)
+
+# coef(hrmecal, IRTpars = TRUE, simplify = TRUE)$items %>%
+#   DT::datatable(options = list(pageLength = 19), rownames = TRUE) %>%
+#   formatRound(columns = 1:13, digits = 3)
+
+fsc <- fscores(hrmecal,method="EAP")
+hrme$ability_est <- fsc
+
+# table(hrme$study_name_short)
+hrme$study <- ifelse(grepl("HRS",hrme$study_name_short),"HRS","MHAS")
+
+mean_hrs <- mean(hrme[hrme$study %in% "HRS","ability_est"])
+sd_hrs <- sd(hrme[hrme$study %in% "HRS","ability_est"])
+mean_mhas <- mean(hrme[hrme$study %in% "MHAS","ability_est"])
+sd_mhas <- sd(hrme[hrme$study %in% "MHAS","ability_est"])
+mean_sd <- list(mean_hrs,mean_mhas,sd_hrs,sd_mhas)
+mean_all <- mean(hrme[hrme$study %in% c("HRS","MHAS"),"ability_est"])
+sd_all <- sd(hrme[hrme$study %in% c("HRS","MHAS"),"ability_est"])
+
+mean <- c(mean_hrs,mean_mhas,mean_all)
+sd <- c(sd_hrs,sd_mhas,sd_all)
+
+mean_sd <- data.frame(mean,sd)
+row.names(mean_sd) <- c("Group 1","Group 2","Combined")
+
+# ----------------------------end mirt calibration -----------------------------
+```
+
+## Run Scenarios
+
+### More simulation options
+
+
+```r
+sigmas <- c(sd_hrs, sd_mhas)
+```
+
+### Scenario 1
+
+
+```r
+# *************************** Simulation Scenarios *****************************
+
+### scenario 1 - all items shared
+
+items <- union(vars,varsm)
+
+if(runOrRead == "run") {
+scen_1 <- equateSim(seed = Seed, 
+                    grp_mean = mus,
+                    grp_sd = sigmas,
+                    ref_grp = refGrp,
+                    n_rep_theta = repTheta,
+                    #n_itm=length(items),
+                    pars=hrme_par,
+                    n_rep = reps,
+                    itms1=items,
+                    itms2=items,
+                    fsc_method = fsMeth,
+                    mod_res_obj=hrmecal,
+                    n_samp1 = n1,
+                    n_samp2 = n2,
+                    save_sims = TRUE,
+                    save_log = TRUE,
+                    log_file = file.path(logPath, "scenario1.txt"),
+                    verbose = FALSE, 
+                    prog_bar = TRUE)
+} 
+
+if(runOrRead == "read") {
+  scen_1 <- readRDS(file.path(readFolder, "scen_1.Rds"))
+}
+
+sumstat1 <- summaryStats(scen_1[["summary"]])
+```
+
+```
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+```
+
+```r
+longstat1 <- scen_1[["summary"]]
+ds1 <- scen_1$datasets
+
+if(runOrRead == "run") {
+saveRDS(scen_1, file=file.path(resultsPath, "scen_1.Rds"))
+}
+
+### end scenario 1
+```
+
+### Scenario 2
+
+
+```r
+### scenario 2 - UMON. UDAY, UYER as linking items, actual items in HRS and MHAS
+
+if(runOrRead == "run") {
+scen_2 <- equateSim(seed = Seed,
+                    grp_mean = mus,
+                    grp_sd = sigmas,
+                    ref_grp = refGrp,
+                    n_rep_theta = repTheta,
+                    #n_itm=length(items),
+                    pars=hrme_par,
+                    n_rep = reps,
+                    itms1=vars,
+                    itms2=varsm,
+                    fsc_method = fsMeth,
+                    mod_res_obj=hrmecal,
+                    n_samp1 = n1,
+                    n_samp2 = n2,
+                    save_sims = TRUE,
+                    save_log = TRUE,
+                    log_file = file.path(logPath, "scenario2.txt"),
+                    verbose = FALSE, 
+                    prog_bar = TRUE)
+}
+
+if(runOrRead == "read") {
+  scen_2 <- readRDS(file.path(readFolder, "scen_2.Rds"))
+}
+
+sumstat2 <- summaryStats(scen_2[["summary"]])
+```
+
+```
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+```
+
+```r
+longstat2 <- scen_2[["summary"]]
+ds2 <- scen_2$datasets
+
+if(runOrRead == "run") {
+saveRDS(scen_2, file=file.path(resultsPath, "scen_2.Rds"))
+}
+  
+### end scenario 2
+```
+
+### Scenario 3
+
+
+```r
+### scenario 3 - UMON. UDAY, UYER UIWR as linking items
+
+itms2 <- c(varsm,"UIWR")
+
+if(runOrRead == "run") {
+scen_3 <- equateSim(seed = Seed,
+                    grp_mean = mus,
+                    grp_sd = sigmas,
+                    ref_grp = refGrp,
+                    n_rep_theta = repTheta,
+                    #n_itm=length(items),
+                    pars=hrme_par,
+                    n_rep = reps,
+                    itms1=vars,
+                    itms2=itms2,
+                    fsc_method = fsMeth,
+                    mod_res_obj=hrmecal,
+                    n_samp1 = n1,
+                    n_samp2 = n2,
+                    save_sims = TRUE,
+                    save_log = TRUE,
+                    log_file = file.path(logPath, "scenario3.txt"),
+                    verbose = FALSE, 
+                    prog_bar = TRUE)
+}
+
+if(runOrRead == "read") {
+  scen_3 <- readRDS(file.path(readFolder, "scen_3.Rds"))
+}
+
+sumstat3 <- summaryStats(scen_3[["summary"]])
+```
+
+```
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+```
+
+```r
+longstat3 <- scen_3[["summary"]]
+ds3 <- scen_3$datasets
+
+if(runOrRead == "run") {
+saveRDS(scen_3, file=file.path(resultsPath, "scen_3.Rds"))
+}
+### end scenario 3
+```
+
+### Scenario 4
+
+
+```r
+### scenario 4 - HRS Items in both studies
+
+if(runOrRead == "run") {
+scen_4 <- equateSim(seed = Seed,
+                    grp_mean = mus,
+                    grp_sd = sigmas,
+                    ref_grp = refGrp,
+                    n_rep_theta = repTheta,
+                    #n_itm=length(vars),
+                    pars=hrs_par,
+                    n_rep = reps,
+                    itms1=vars,
+                    itms2=vars,
+                    fsc_method = fsMeth,
+                    mod_res_obj=hrscal,
+                    n_samp1 = n1,
+                    n_samp2 = n2,
+                    save_sims = TRUE,
+                    save_log = TRUE,
+                    log_file = file.path(logPath, "scenario4.txt"),
+                    verbose = FALSE, 
+                    prog_bar = TRUE)
+}
+
+if(runOrRead == "read") {
+  scen_4 <- readRDS(file.path(readFolder, "scen_4.Rds"))
+}
+
+sumstat4 <- summaryStats(scen_4[["summary"]])
+```
+
+```
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+```
+
+```r
+longstat4 <- scen_4[["summary"]]
+ds4 <- scen_4$datasets
+
+if(runOrRead == "run") {
+saveRDS(scen_4, file=file.path(resultsPath, "scen_4.Rds"))
+}
+  
+### end scenario 4
+```
+
+### Scenario 5
+
+
+```r
+### scenario 5 - MHAS Items in both studies
+
+if(runOrRead == "run") {
+scen_5 <- equateSim(seed = Seed,
+                    grp_mean = mus,
+                    grp_sd = sigmas,
+                    ref_grp = refGrp,
+                    n_rep_theta = repTheta,
+                    #n_itm=length(varsm),
+                    pars=mex_par,
+                    n_rep = reps,
+                    itms1=varsm,
+                    itms2=varsm,
+                    fsc_method = fsMeth,
+                    mod_res_obj=mexcal,
+                    n_samp1 = n1,
+                    n_samp2 = n2,
+                    save_sims = TRUE,
+                    save_log = TRUE,
+                    log_file = file.path(logPath, "scenario5.txt"),
+                    verbose = FALSE, 
+                    prog_bar = TRUE)
+}
+
+if(runOrRead == "read") {
+  scen_5 <- readRDS(file.path(readFolder, "scen_5.Rds"))
+}
+
+sumstat5 <- summaryStats(scen_5[["summary"]])
+```
+
+```
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+```
+
+```r
+longstat5 <- scen_5[["summary"]]
+ds5 <- scen_5$datasets
+
+if(runOrRead == "run") {
+saveRDS(scen_5, file=file.path(resultsPath, "scen_5.Rds"))
+}
+
+### end scenario 5
+```
+
+### Scenario 6
+
+
+```r
+### scenario 6 -  UDAY as linking item
+
+vars6 <- vars[!vars %in% c("UMON",'UYER')]
+varsm6 <- varsm[!varsm %in% c("UMON",'UYER')]
+
+if(runOrRead == "run") {
+scen_6 <- equateSim(seed = Seed,
+                    grp_mean = mus,
+                    grp_sd = sigmas,
+                    ref_grp = refGrp,
+                    n_rep_theta = repTheta,
+                    #n_itm=length(items),
+                    pars=hrme_par,
+                    n_rep = reps,
+                    itms1=vars,
+                    itms2=varsm6,
+                    fsc_method = fsMeth,
+                    mod_res_obj=hrmecal,
+                    n_samp1 = n1,
+                    n_samp2 = n2,
+                    save_sims = TRUE,
+                    save_log = TRUE,
+                    log_file = file.path(logPath, "scenario6.txt"),
+                    verbose = FALSE, 
+                    prog_bar = TRUE)
+}
+
+if(runOrRead == "read") {
+  scen_6 <- readRDS(file.path(readFolder, "scen_6.Rds"))
+}
+
+sumstat6 <- summaryStats(scen_6[["summary"]])
+```
+
+```
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+```
+
+```r
+longstat6 <- scen_6[["summary"]]
+ds6 <- scen_6$datasets
+
+if(runOrRead == "run") {
+saveRDS(scen_6, file=file.path(resultsPath, "scen_6.Rds"))
+}
+
+### end scenario 6
+```
+
+### Scenario 7
+
+
+```r
+### scenario 7 - UIWR as linking item, MHAS without UMON UDAY UYER
+
+varsm7 <- c(varsm[!varsm %in% c("UMON",'UYER','UDAY')],'UIWR')
+
+if(runOrRead == "run") {
+scen_7 <- equateSim(seed = Seed,
+                    grp_mean = mus,
+                    grp_sd = sigmas,
+                    ref_grp = refGrp,
+                    n_rep_theta = repTheta,
+                    #n_itm=length(items),
+                    pars=hrme_par,
+                    n_rep = reps,
+                    itms1=vars,
+                    itms2=varsm7,
+                    fsc_method = fsMeth,
+                    mod_res_obj=hrmecal,
+                    n_samp1 = n1,
+                    n_samp2 = n2,
+                    save_sims = TRUE,
+                    save_log = TRUE,
+                    log_file = file.path(logPath, "scenario7.txt"),
+                    verbose = FALSE, 
+                    prog_bar = TRUE)
+}
+
+if(runOrRead == "read") {
+  scen_7 <- readRDS(file.path(readFolder, "scen_7.Rds"))
+}
+
+sumstat7 <- summaryStats(scen_7[["summary"]])
+```
+
+```
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+```
+
+```r
+longstat7 <- scen_7[["summary"]]
+ds7 <- scen_7$datasets
+
+if(runOrRead == "run") {
+saveRDS(scen_7, file=file.path(resultsPath, "scen_7.Rds"))
+}
+### end scenario 7
+```
+
+### Scenario 8
+
+
+```r
+### scenario 8 - UIWR as linking item, HRS without UMON UDAY UYER
+
+vars8 <- vars[!vars %in% c("UMON",'UYER','UDAY')]
+varsm8 <- c(varsm,'UIWR')
+
+if(runOrRead == "run") {
+scen_8 <- equateSim(seed = Seed,
+                    grp_mean = mus,
+                    grp_sd = sigmas,
+                    ref_grp = refGrp,
+                    n_rep_theta = repTheta,
+                    #n_itm=length(items),
+                    pars=hrme_par,
+                    n_rep = reps,
+                    itms1=vars8,
+                    itms2=varsm8,
+                    fsc_method = fsMeth,
+                    mod_res_obj=hrmecal,
+                    n_samp1 = n1,
+                    n_samp2 = n2,
+                    save_sims = TRUE,
+                    save_log = TRUE,
+                    log_file = file.path(logPath, "scenario8.txt"),
+                    verbose = FALSE, 
+                    prog_bar = TRUE)
+}
+
+if(runOrRead == "read") {
+  scen_8 <- readRDS(file.path(readFolder, "scen_8.Rds"))
+}
+
+sumstat8 <- summaryStats(scen_8[["summary"]])
+```
+
+```
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+```
+
+```r
+longstat8 <- scen_8[["summary"]]
+ds8 <- scen_8$datasets
+
+if(runOrRead == "run") {
+saveRDS(scen_8, file=file.path(resultsPath, "scen_8.Rds"))
+}
+### end scenario 8
+```
+
+### Scenario 9
+
+
+```r
+if(runOrRead == "run") {
+scen_9 <- equateSim(seed = Seed, 
+                    grp_mean = mus,
+                    grp_sd = sigmas,
+                    ref_grp = refGrp,
+                    n_rep_theta = repTheta,
+                    #n_itm=length(items),
+                    pars=hrme_par,
+                    n_rep = reps,
+                    itms1=vars,
+                    itms2=varsm,
+                    fsc_method = fsMeth,
+                    mod_res_obj=hrmecal,
+                    n_samp1 = n1,
+                    n_samp2 = n2,
+                    save_sims = TRUE,
+                    save_log = TRUE,
+                    log_file = file.path(logPath, "scenario9.txt"),
+                    verbose = FALSE, 
+                    prog_bar = TRUE,
+                    man_override = list(iname = c("UDAY", "UMON"),
+                                        parameter = c("b", "b"), 
+                                        val = c(0, 1.928)))
+}
+
+if(runOrRead == "read") {
+  scen_9 <- readRDS(file.path(readFolder, "scen_9.Rds"))
+}
+
+sumstat9 <- summaryStats(scen_9[["summary"]])
+```
+
+```
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+```
+
+```r
+longstat9 <- scen_9[["summary"]]
+ds9 <- scen_9$datasets
+
+if(runOrRead == "run") {
+saveRDS(scen_9, file=file.path(resultsPath, "scen_9.Rds"))
+}
+### end scenario 9
+```
+
+### Scenario 10
+
+
+```r
+if(runOrRead == "run") {
+scen_10 <- equateSim(seed = Seed, 
+                    grp_mean = mus,
+                    grp_sd = sigmas,
+                    ref_grp = refGrp,
+                    n_rep_theta = repTheta,
+                    #n_itm=length(items),
+                    pars=hrme_par,
+                    n_rep = reps,
+                    itms1=vars,
+                    itms2=varsm,
+                    fsc_method = fsMeth,
+                    mod_res_obj=hrmecal,
+                    n_samp1 = n1,
+                    n_samp2 = n2,
+                    save_sims = TRUE,
+                    save_log = TRUE,
+                    log_file = file.path(logPath, "scenario10.txt"),
+                    verbose = FALSE, 
+                    prog_bar = TRUE,
+                    man_override = list(iname = c("UDAY", "UMON", "UDAY", "UMON", "UYER"),
+                                        parameter = c("b", "b", "a1", "a1", "a1"), 
+                                        val = c(0, 1.928, 4, 4, 4)))
+}
+
+if(runOrRead == "read") {
+  scen_10 <- readRDS(file.path(readFolder, "scen_10.Rds"))
+}
+
+sumstat10 <- summaryStats(scen_10[["summary"]])
+```
+
+```
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+## `summarise()` regrouping output by 'group' (override with `.groups` argument)
+```
+
+```r
+longstat10 <- scen_10[["summary"]]
+ds10 <- scen_10$datasets
+
+if(runOrRead == "run") {
+saveRDS(scen_10, file=file.path(resultsPath, "scen_10.Rds"))
+}
+### end scenario 10
+```
+
+## Combine and Process Simulated Data
+
+
+```r
+nscen <- sum(str_detect(ls(), "^scen_[0-9]"))
+
+### Merge summary statistics from scenarios
+
+if(nscen > 0){
+for(ns in 1:nscen){
+  temp <- dynGet(paste0("sumstat", ns))
+  temp$scenario <- ns
+  assign(paste0("sumstat", ns), temp)
+  
+  temp <- dynGet(paste0("longstat", ns))
+  temp$scenario <- ns
+  assign(paste0("longstat", ns), temp)
+  
+  temp <- dynGet(paste0("ds", ns))
+  temp$scenario <- ns
+  assign(paste0("ds", ns), temp)
+}
+}
+
+longstat <- lapply(paste0("longstat", 1:nscen), dynGet) %>%
+  do.call(bind_rows, .)
+
+dsAll <- lapply(paste0("ds", 1:nscen), dynGet) %>%
+  do.call(bind_rows, .)
+
+sumstat <- lapply(paste0("sumstat", 1:nscen), dynGet) %>%
+  do.call(bind_rows, .)
+
+scenLabs <- c(
+  "HRS+MHAS_all_shared",
+  "HRS+MHAS_UMON_UDAY_UYER_shared",
+  "HRS+MHAS_UMON_UDAY_UYER_UIWR_shared",
+  "HRS_all_shared",
+  "MHAS_all_shared",
+  "HRS+HMAS_UDAY_shared",
+  "HRS+MHAS_UIWR_shared_no_MHAS_dates",
+  "HRS+MHAS_UIWR_shared_no_HRS_dates",
+  "HRS+MHAS_UMON(b=1.928)_UDAY(b=0)_UYER(b=-1.928)_shared",
+  "HRS+MHAS_UMON(b=1.928,a1=4)_UDAY(b=0,a1=4)_UYER(b=-1.928,a1=4)_shared"
+)
+
+sumstat$scenario_label <- factor(sumstat$scenario, 
+                                 levels = 1:nscen, 
+                                 labels = scenLabs[1:nscen])
+
+if(runOrRead == "run") {
+saveRDS(sumstat,file=file.path(resultsPath, paste0("sumstat_", outFolderName, ".rds")))
+#sumstat <- readRDS("Results/sumstat_2020-07-08-18-13.rds")
+
+save(list = ls(all.names = TRUE),
+     file=file.path(resultsPath, paste0("simulation_results_", outFolderName, ".RData")),
+     envir = environment())
+#load("Output/2020-08-06_09-04-AM/Results/simulation_results_2020-08-06_09-04-AM.RData")
+
+write.csv(sumstat, file=file.path(resultsPath, paste0("sumstat", outFolderName, ".csv")))
+}
+
+if(runOrRead == "read") {
+  #sumstat <- readRDS(file.path(readFolder, paste0("sumstat_", str_sub(readFolder, 8, -9), ".Rds")))
+  write.csv(sumstat, file=file.path(resultsPath, paste0("sumstat", outFolderName, ".csv")))
+}
+```
+
+### Create Tables
+
+
+```r
+DT::datatable(sumstat, options = list(pageLength = 30), rownames = FALSE) %>%
+  formatRound(columns = names(sumstat)[-c(1, ncol(sumstat))], digits = 3) %>%
+  formatRound(columns = c("n_rep", "scenario"), digits = 0)
+```
+
+<!--html_preserve--><div id="htmlwidget-aa7028e7dc7873f2f2c4" style="width:100%;height:auto;" class="datatables html-widget"></div>
+<script type="application/json" data-for="htmlwidget-aa7028e7dc7873f2f2c4">{"x":{"filter":"none","data":[["Group 1","Group 2","Combined","Group 1","Group 2","Combined","Group 1","Group 2","Combined","Group 1","Group 2","Combined","Group 1","Group 2","Combined","Group 1","Group 2","Combined","Group 1","Group 2","Combined","Group 1","Group 2","Combined","Group 1","Group 2","Combined","Group 1","Group 2","Combined"],[0,-0.24,-0.12,0,-0.24,-0.12,0,-0.24,-0.12,0,-0.24,-0.12,0,-0.24,-0.12,0,-0.24,-0.12,0,-0.24,-0.12,0,-0.24,-0.12,0,-0.24,-0.12,0,-0.24,-0.12],[-0.00218412725001285,-0.252358237198278,-0.127271182224145,-0.0817987107692201,-0.172976201095471,-0.127387455932345,-0.0144602314202828,-0.228454711071341,-0.121457471245812,-0.00029149236464405,-0.232472929780765,-0.116382211072705,-0.00108734097849644,-0.250149809797463,-0.12561857538798,-0.106604917574616,-0.140327025054977,-0.123465971314797,-0.0152881021312191,-0.220454476045584,-0.117871289088402,-0.0183928309893174,-0.227337625015371,-0.122865228002344,-0.0594268254315423,-0.177586414530197,-0.11850661998087,-0.0172342505928182,-0.227992577171139,-0.122613413881979],[-0.00577695119110557,-0.234894150609353,-0.120335550900229,-0.0782586172518545,-0.16473509408738,-0.121496855669618,-0.022048877533817,-0.22253462520476,-0.122291751369289,-0.00979980387918118,-0.232162138395378,-0.12098097113728,-0.0042707471572891,-0.237157448524774,-0.120714097841032,-0.105234356723924,-0.137759354615311,-0.121496855669618,-0.0259256316477915,-0.218657871090786,-0.122291751369289,-0.0243928838212676,-0.220190618917309,-0.122291751369289,-0.065678554844389,-0.177070839980754,-0.121374697412571,-0.0233803938554315,-0.219369000969711,-0.121374697412571],[0.967457303406723,1.05795048620588,1.02162264537683,0.953719159575069,1.00837290184881,0.982189957302298,0.943434538383783,1.03702220774389,0.997253311407416,0.926554498249882,1.00763531784634,0.975114502230505,0.941500426138127,1.03498294662619,0.997405271374826,0.964045529434547,0.988060135819401,0.975871602889584,0.945067223950841,1.03127553623091,0.994555538405153,0.944250809492284,1.0363599063558,0.997029709156095,0.968864104690345,1.00457632445505,0.98848567389841,0.976283800753551,1.01614191291481,1.00196209791621],[0.886781056465576,0.968853834338152,0.93596452362235,0.905787388046528,0.956630596398543,0.932278445290417,0.884441531909749,0.971392418729687,0.93448005595312,0.888414541623186,0.965400507453257,0.934569826495394,0.880752201259228,0.967303679630891,0.93257663612248,0.921408785761782,0.943500239297256,0.932278445290417,0.888323741190337,0.968671426985673,0.93448005595312,0.885392695704756,0.970999475434133,0.93448005595312,0.914236096789236,0.94703026291656,0.932290047768695,0.908816418753348,0.945091872631877,0.932290047768695],[0.260748392880667,0.260389148606405,0.260643557708133,0.370707373704635,0.345989957861953,0.358954102467766,0.34495595334994,0.292119294040975,0.319747441601421,0.364245345724627,0.36182872646041,0.363143794046651,0.326553580453744,0.324940557605998,0.325827505809943,0.389759895236407,0.364985780795382,0.378430792863172,0.345548973601381,0.294961838646334,0.321365853227913,0.35196678870592,0.29229230010357,0.323626008263201,0.35540294785631,0.332030270538624,0.344151741002919,0.310890132216678,0.292829727205493,0.302107184796411],[0.232339723076822,0.230331210357164,0.2314024515846,0.34208767289757,0.324062620550242,0.333282597215639,0.32565671832229,0.271006587158999,0.299664929874,0.351474607846061,0.348789512781619,0.350237270959298,0.306267138555335,0.304267682688767,0.305345180144,0.353766093876858,0.335494021982853,0.344832471570614,0.32670665351938,0.275503014848475,0.302275560187826,0.332390362325113,0.271241798795819,0.303446433844632,0.331551644238124,0.314911455816799,0.323416680944246,0.281656687370898,0.275351465830335,0.278589255410167],[0.00084831185833631,0.0622180978609894,0.0310938418417043,0.0616687247036867,0.0813719853165801,0.0703212792923856,0.00513659681157897,0.0637301361138298,0.0338389507986345,0.00041983066158219,0.060706262904386,0.0303323551703201,0.000713775024349789,0.0618647422425902,0.0309353782048763,0.0881532436764397,0.105618786770206,0.096712767373168,0.00536651086561232,0.0634382525785811,0.0337328882229938,0.00720509699948927,0.0655397930068003,0.0353530515872335,0.0223612579927145,0.0657619873933637,0.043815905398819,0.0055777842777808,0.0606818101885391,0.0325217753424559],[0.0363546455202961,0.0444737987196842,0.0290747938738335,0.0313316983836208,0.0333813894344131,0.028618066250286,0.0381006982101725,0.0435777385633524,0.0298264566355856,0.0383829915729651,0.0435850092068034,0.0292099126994403,0.0379359505874461,0.0419283814403783,0.02757450513666,0.0299221184387584,0.0308375065817206,0.028618066250286,0.0380114798456744,0.0435725596025041,0.0298264566355856,0.0382383766665143,0.0439810604561428,0.0298264566355856,0.0349938957276289,0.0355477191202335,0.028457309325248,0.037830703532183,0.0392264077893895,0.028457309325248],[-0.00218412725001285,-0.0123582371982776,-0.00727118222414522,-0.0817987107692201,0.0670237989045292,-0.00738745593234544,-0.0144602314202828,0.0115452889286589,-0.00145747124581196,-0.00029149236464405,0.00752707021923457,0.00361778892729527,-0.00108734097849644,-0.0101498097974632,-0.00561857538797983,-0.106604917574616,0.0996729749450229,-0.00346597131479662,-0.0152881021312191,0.0195455239544159,0.00212871091159841,-0.0183928309893174,0.0126623749846291,-0.00286522800234412,-0.0594268254315423,0.0624135854698028,0.00149338001913027,-0.0172342505928182,0.0120074228288605,-0.00261341388197882],[null,-0.0514926549928231,-0.0605931852012101,null,0.279265828768872,-0.0615621327695453,null,0.0481053705360787,-0.0121455937150996,null,0.0313627925801441,0.0301482410607939,null,-0.0422908741560967,-0.0468214615664986,null,0.415304062270929,-0.0288830942899718,null,0.0814396831433998,0.0177392575966535,null,0.0527598957692879,-0.0238769000195344,null,0.260056606124178,0.0124448334927522,null,0.0500309284535855,-0.0217784490164902],[-0.00577695119110557,0.0051058493906472,-0.000335550900229187,-0.0782586172518545,0.0752649059126195,-0.00149685566961751,-0.022048877533817,0.0174653747952399,-0.00229175136928852,-0.00979980387918118,0.0078378616046216,-0.000980971137279782,-0.0042707471572891,0.00284255147522558,-0.000714097841031755,-0.105234356723924,0.102240645384689,-0.00149685566961752,-0.0259256316477915,0.0213421289092144,-0.00229175136928852,-0.0243928838212676,0.0198093810826906,-0.00229175136928852,-0.065678554844389,0.062929160019246,-0.0013746974125715,-0.0233803938554315,0.0206309990302885,-0.0013746974125715],[null,0.02127437246103,-0.00279625750190989,null,0.313603774635915,-0.0124737972468125,null,0.0727723949801663,-0.0190979280774044,null,0.0326577566859234,-0.00817475947733152,null,0.0118439644801066,-0.00595081534193129,null,0.426002689102872,-0.0124737972468127,null,0.0889255371217266,-0.0190979280774044,null,0.082539087844544,-0.0190979280774044,null,0.262204833413525,-0.0114558117714292,null,0.0859624959595354,-0.0114558117714292],[0.960795498551883,0.967881967266221,0.965238708126624,0.925028801141428,0.944232686388977,0.932658048302284,0.92906369342412,0.958746221190789,0.946029666276231,0.91919521770608,0.933729250722453,0.928332112333291,0.935824573698638,0.948365788966405,0.94375098211528,0.922350351211321,0.9411061453302,0.926680221486953,0.928958411839621,0.95779166763795,0.945318295582289,0.926275569918721,0.95876119237317,0.944724507092837,0.928944182894285,0.947273507862572,0.937156816686438,0.944466681614352,0.95773235526645,0.952101201933523],[0.965363403376834,0.971744839155682,0.969343493666828,0.930661992117215,0.947105340196638,0.935897181186474,0.931832843220613,0.96123876308219,0.948411826804968,0.920749165083708,0.934828818520674,0.929518970639355,0.938867156220686,0.950663772240761,0.946257819723387,0.930666560672215,0.945287974355057,0.931372518546184,0.931842555126306,0.959914349386209,0.947508579894492,0.929117324959415,0.96121568042733,0.94709604159529,0.934942633035051,0.948910070582761,0.939644484919326,0.951161315753144,0.959466500784708,0.955230863889313],[500,500,500,500,500,500,500,500,500,500,500,500,500,500,500,500,500,500,500,500,500,500,500,500,500,500,500,500,500,500],[1,1,1,2,2,2,3,3,3,4,4,4,5,5,5,6,6,6,7,7,7,8,8,8,9,9,9,10,10,10],["HRS+MHAS_all_shared","HRS+MHAS_all_shared","HRS+MHAS_all_shared","HRS+MHAS_UMON_UDAY_UYER_shared","HRS+MHAS_UMON_UDAY_UYER_shared","HRS+MHAS_UMON_UDAY_UYER_shared","HRS+MHAS_UMON_UDAY_UYER_UIWR_shared","HRS+MHAS_UMON_UDAY_UYER_UIWR_shared","HRS+MHAS_UMON_UDAY_UYER_UIWR_shared","HRS_all_shared","HRS_all_shared","HRS_all_shared","MHAS_all_shared","MHAS_all_shared","MHAS_all_shared","HRS+HMAS_UDAY_shared","HRS+HMAS_UDAY_shared","HRS+HMAS_UDAY_shared","HRS+MHAS_UIWR_shared_no_MHAS_dates","HRS+MHAS_UIWR_shared_no_MHAS_dates","HRS+MHAS_UIWR_shared_no_MHAS_dates","HRS+MHAS_UIWR_shared_no_HRS_dates","HRS+MHAS_UIWR_shared_no_HRS_dates","HRS+MHAS_UIWR_shared_no_HRS_dates","HRS+MHAS_UMON(b=1.928)_UDAY(b=0)_UYER(b=-1.928)_shared","HRS+MHAS_UMON(b=1.928)_UDAY(b=0)_UYER(b=-1.928)_shared","HRS+MHAS_UMON(b=1.928)_UDAY(b=0)_UYER(b=-1.928)_shared","HRS+MHAS_UMON(b=1.928,a1=4)_UDAY(b=0,a1=4)_UYER(b=-1.928,a1=4)_shared","HRS+MHAS_UMON(b=1.928,a1=4)_UDAY(b=0,a1=4)_UYER(b=-1.928,a1=4)_shared","HRS+MHAS_UMON(b=1.928,a1=4)_UDAY(b=0,a1=4)_UYER(b=-1.928,a1=4)_shared"]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th>group<\/th>\n      <th>theta<\/th>\n      <th>mean<\/th>\n      <th>mean_st<\/th>\n      <th>sd<\/th>\n      <th>sd_st<\/th>\n      <th>rmse<\/th>\n      <th>rmse_st<\/th>\n      <th>ese<\/th>\n      <th>ese_st<\/th>\n      <th>bias<\/th>\n      <th>bias_pct<\/th>\n      <th>bias_st<\/th>\n      <th>bias_pct_st<\/th>\n      <th>ICC_C_1<\/th>\n      <th>r_theta_est<\/th>\n      <th>n_rep<\/th>\n      <th>scenario<\/th>\n      <th>scenario_label<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"pageLength":30,"columnDefs":[{"targets":16,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 0, 3, \",\", \".\"); }"},{"targets":17,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 0, 3, \",\", \".\"); }"},{"targets":1,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 3, 3, \",\", \".\"); }"},{"targets":2,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 3, 3, \",\", \".\"); }"},{"targets":3,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 3, 3, \",\", \".\"); }"},{"targets":4,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 3, 3, \",\", \".\"); }"},{"targets":5,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 3, 3, \",\", \".\"); }"},{"targets":6,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 3, 3, \",\", \".\"); }"},{"targets":7,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 3, 3, \",\", \".\"); }"},{"targets":8,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 3, 3, \",\", \".\"); }"},{"targets":9,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 3, 3, \",\", \".\"); }"},{"targets":10,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 3, 3, \",\", \".\"); }"},{"targets":11,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 3, 3, \",\", \".\"); }"},{"targets":12,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 3, 3, \",\", \".\"); }"},{"targets":13,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 3, 3, \",\", \".\"); }"},{"targets":14,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 3, 3, \",\", \".\"); }"},{"targets":15,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 3, 3, \",\", \".\"); }"},{"targets":16,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 3, 3, \",\", \".\"); }"},{"targets":17,"render":"function(data, type, row, meta) { return DTWidget.formatRound(data, 3, 3, \",\", \".\"); }"},{"className":"dt-right","targets":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]}],"order":[],"autoWidth":false,"orderClasses":false,"lengthMenu":[10,25,30,50,100]}},"evals":["options.columnDefs.0.render","options.columnDefs.1.render","options.columnDefs.2.render","options.columnDefs.3.render","options.columnDefs.4.render","options.columnDefs.5.render","options.columnDefs.6.render","options.columnDefs.7.render","options.columnDefs.8.render","options.columnDefs.9.render","options.columnDefs.10.render","options.columnDefs.11.render","options.columnDefs.12.render","options.columnDefs.13.render","options.columnDefs.14.render","options.columnDefs.15.render","options.columnDefs.16.render","options.columnDefs.17.render","options.columnDefs.18.render"],"jsHooks":[]}</script><!--/html_preserve-->
+
+```r
+read_docx() %>%  # a new, empty document
+  body_add_table(sumstat %>% 
+                   mutate_if(is.numeric, round, 3) %>%
+                   dplyr::select(scenario, mean, sd, bias, bias_pct, ese, rmse, r_theta_est) %>%
+                   filter(group == "Combined"), style = "table_template") %>% 
+  print(target=file.path(resultsPath, "Table3.docx"))
+```
+
+```
+## `mutate_if()` ignored the following grouping variables:
+## Column `group`
+```
+
+```
+## Adding missing grouping variables: `group`
+```
+
+```r
+read_docx() %>%  # a new, empty document
+  body_add_table(sumstat %>% 
+                   mutate_if(is.numeric, round, 3) %>%
+                   dplyr::select(scenario, mean, sd, bias, bias_pct, ese, rmse, r_theta_est) %>%
+                   filter(group == "Group 1"), style = "table_template") %>% 
+  print(target=file.path(resultsPath, "Table4.docx"))
+```
+
+```
+## `mutate_if()` ignored the following grouping variables:
+## Column `group`
+## Adding missing grouping variables: `group`
+```
+
+```r
+read_docx() %>%  # a new, empty document
+  body_add_table(sumstat %>% 
+                   mutate_if(is.numeric, round, 3) %>%
+                   dplyr::select(scenario, mean, sd, bias, bias_pct, ese, rmse, r_theta_est) %>%
+                   filter(group == "Group 2"), style = "table_template") %>% 
+  print(target=file.path(resultsPath, "Table5.docx"))
+```
+
+```
+## `mutate_if()` ignored the following grouping variables:
+## Column `group`
+## Adding missing grouping variables: `group`
+```
+
+### Create Plots
+
+
+```r
+# Plot scenarios
+
+sumlong <- sumstat %>%
+  dplyr::select(group, mean, mean_st, sd, sd_st, n_rep, scenario) %>%
+  pivot_longer(cols = c(mean, mean_st, sd, sd_st),
+               names_to = c(".value", "stat"),
+               names_sep = c("_")) %>%
+  mutate_at(vars(stat), replace_na, "us") %>%
+  mutate(low95 = mean - qnorm(.975)*sd/sqrt(n_rep),
+         up95 = mean + qnorm(.975)*sd/sqrt(n_rep)) %>%
+  mutate(scenF = factor(scenario, levels = 1:nscen, labels = paste0("Scenario ", 1:nscen))) %>%
+  mutate(Group = factor(group, levels = c("Combined", "Group 1", "Group 2"))) %>%
+  mutate(stat = factor(stat, levels = c("us", "st"),
+                       labels = c("Unstandardized", "Standardized"))) %>%
+  mutate(avg = mean)
+```
+
+```
+## Warning: Expected 2 pieces. Missing pieces filled with `NA` in 2 rows [1, 3].
+```
+
+```r
+thetalines3 <- data.frame(group = rep(c("Group 1", "Group 2", "Combined"), 2),
+                         name = rep(c("mean", "mean_st"), each = 3),
+                         value = rep(c(0, -.24, -.12), 2)) %>%
+  mutate(Group = factor(group, levels = c("Combined", "Group 1", "Group 2")))
+
+thetalines2 <- data.frame(group = rep(c("Group 2", "Combined"), 2),
+                         name = rep(c("mean", "mean_st"), each = 2), 
+                         value = rep(c(-.24, -.12), 2)) %>%
+  mutate(Group = factor(group, levels = c("Combined", "Group 2")))
+
+# Bar plots with 95% CIs (doesn't look that nice)
+# sumlong %>% 
+#   ggplot(aes(x = scenario, y = mean)) + 
+#   geom_col() +
+#   facet_grid(Group ~ stat) +
+#   geom_hline(data = thetalines, aes(yintercept = value), 
+#              lty = 2) +
+#   ylab("Mean Ability") +
+#   xlab("Scenario") +
+#   geom_errorbar(aes(ymin =low95, ymax = up95)) +
+#   ylim(-.5, .25)
+
+# Raincloud plots
+if(!exists("geom_flat_violin")) {
+  source("https://gist.githubusercontent.com/benmarwick/2a1bb0133ff568cbe28d/raw/fb53bd97121f7f9ce947837ef1a4c65a73bffb3f/geom_flat_violin.R")
+}
+
+s1cols <- brewer.pal(9, "Set1")
+s1cols <- c(s1cols, "#0C0B30")
+
+for(s in unique(longstat$type)){
+  rcp <- longstat %>%
+    filter(type == s) %>%
+    filter(statistic == "est_mean") %>%
+    mutate(scenF = factor(scenario, levels = 1:nscen, labels = paste0("Scenario ", 1:nscen))) %>%
+    mutate(Group = factor(group, levels = 0:2, labels = c("Combined", "Group 1", "Group 2"))) %>%
+    ggplot(aes(x = fct_rev(scenF), y = avg, fill = scenF)) +
+    geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8, scale = "width") +
+    geom_point(aes(y = avg, color = scenF), 
+               position = position_jitter(width = .15), 
+               size = .5, alpha = 0.8) +
+    geom_boxplot(width = .1, outlier.shape = NA, alpha = 0.85, fill = "white", notch = TRUE) +
+    ylab("Mean Ability") +
+    guides(fill = FALSE) +
+    guides(color = FALSE) +
+    coord_flip() +
+    expand_limits(x = max(longstat$scenario) + 1) +
+    xlab("") +
+    facet_wrap(~Group, ncol = 3) +
+    scale_colour_manual(name = "Scenario", values = s1cols) + 
+    scale_fill_manual(name = "Scenario", values = s1cols) + 
+    #scale_colour_brewer(name = "Scenario", palette = "Set3") +
+    #scale_fill_brewer(name = "Scenario", palette = "Set3") +
+    geom_hline(data = thetalines3, aes(yintercept = value), 
+               lty = 2) +
+    theme_few() + 
+    theme(panel.background = element_rect(fill = "gray85"),
+          axis.text.x = element_text(size = 6))
+  
+  ggsave(file.path(plotPath, paste0("Figure_", s, ".tiff")), width = 6.5, height = 4.5) # High quality for submission
+  ggsave(file.path(plotPath, paste0("Figure_", s, ".png")), width = 6.5, height = 4.5) # For Word doc
+  
+
+}
+
+## Bland-Altman Plots
+
+nPoints <- 500
+
+set.seed(48293)
+ba1 <- dsAll %>%
+  mutate(Scenario = factor(scenario, levels = 1:nscen, labels = paste0("Scenario ", 1:nscen))) %>%
+  group_by(scenario) %>%
+  sample_n(nPoints) %>%
+  ggplot(aes(x = ability, y = resid, colour = factor(group), shape = factor(group))) +
+  geom_point() +
+  xlab(expression(theta)) +
+  ylab("Unstandardized Residual") +
+  facet_wrap(~Scenario, ncol = 3) +
+  geom_hline(yintercept = c(-.3, .3), lty = 2) +
+  scale_colour_manual(values = c("#f1a340d9", "#998ec3d9"), name = "Group") +
+  scale_shape_discrete(name = "Group") +
+  ylim(-1.65, 1.65) + 
+  theme_few() + 
+  theme(panel.background = element_rect(fill = "#f7f7f7"))
+
+ggsave(file.path(plotPath, "BlandAltman_us.png"), width = 6.5, height = 4.5) # For Word doc
+ggsave(file.path(plotPath, "BlandAltman_us.tiff"), width = 6.5, height = 4.5) # High quality for submission
+
+set.seed(48293)
+ba2 <- dsAll %>%
+  mutate(Scenario = factor(scenario, levels = 1:nscen, labels = paste0("Scenario ", 1:nscen))) %>%
+  group_by(scenario) %>%
+  sample_n(nPoints) %>%
+  ggplot(aes(x = ability, y = resid_st, colour = factor(group), shape = factor(group))) +
+  geom_point() +
+  xlab(expression(theta)) +
+  ylab("Standardized Residual") +
+  facet_wrap(~Scenario, ncol = 3) +
+  geom_hline(yintercept = c(-.3, .3), lty = 2) +
+  scale_colour_manual(values = c("#f1a340d9", "#998ec3d9"), name = "Group") +
+  scale_shape_discrete(name = "Group") +
+  ylim(-1.65, 1.65) +
+  theme_few() + 
+  theme(panel.background = element_rect(fill = "#f7f7f7"))
+
+ggsave(file.path(plotPath, "BlandAltman_st.png"), width = 6.5, height = 4.5) # For Word doc
+ggsave(file.path(plotPath, "BlandAltman_st.tiff"), width = 6.5, height = 4.5) # High quality for submission
+```
+
+### A Closer Look at Residuals
+
+
+```r
+badat <- dsAll %>% 
+  mutate(w30 = ifelse(resid < .30, 1, 0),
+         w30_st = ifelse(resid_st < .30, 1, 0)) %>%
+  group_by(group, scenario)
+
+# Proportion of unstandardized residuals outside of .30 by group
+
+f3dat1 <- table(badat$w30, badat$scenario, badat$group) %>%
+  prop.table(margin = c(2, 3)) %>%
+  data.frame
+
+# Proportion of unstandardized residuals outside of .30 collapsing over group
+
+f3dat2 <- table(badat$w30, badat$scenario) %>%
+  prop.table(margin = 2) %>%
+  data.frame
+
+# Proportion of standardized residuals outside of .30 by group
+
+f4dat1 <- table(badat$w30_st, badat$scenario, badat$group) %>%
+  prop.table(margin = c(2, 3)) %>%
+  data.frame
+
+# Proportion of standardized residuals outside of .30 collapsing over group
+
+f4dat2 <- table(badat$w30_st, badat$scenario) %>%
+  prop.table(margin = 2) %>%
+  data.frame
+
+# sumstatt <- readRDS("Results/sumstat_2020-01-07-13-23.rds")
+# ---------------------------------End Scenarios -------------------------------
+```
+
+# Results
+
+## Simulation Settings
+
+| Option                                     | Value                      |
+|:-------------------------------------------|:--------------------------:|
+| Seed                                       | 21589 |
+| N, Group 1                                 | 500                     |
+| Population mean, Group 1                   | 0                 |
+| Population SD, Group 1                     | 0.8723566              |
+| N, Group 2                                 | 500                     |
+| Population mean, Group 2                   | -0.24                 |
+| Population SD, Group 2                     | 0.976626              |
+| Reference Group                            | 1                 |
+| Number of replicates of theta per scenario | 1               |
+| Number of simulated data sets per scenario | 500                   |
+| Factor score method                        | EAP                 |
+
+## Table 1
+
+Table 1. Nine simulation scenarios manipulating linking items and non-linking items.
+
+| Item                     | 1  | 2  | 3  | 4  | 5  | 6  | 7  | 8  | 9   | 10    |
+|:------------------------ |:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:---:|:-----:|
+| Orientation to day       | L  | L  | L  | L  | L  | L  | G1 | G2 | L*  | L*\^  | 
+| Orientation to month     | L  | L  | L  | L  | L  | G1 | G1 | G2 | L** | L**\^ | 
+| Orientation to year      | L  | L  | L  | L  | L  | G1 | G1 | G2 | L   | L\^   |
+| Orientation to date      | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  | G1    |
+| President                | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  | G1    |
+| Vice President           | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  | G1    |
+| Backward Counting        | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  | G1    |
+| Verbal Naming - Scissors | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  | G1    |
+| Verbal Naming - Cactus   | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  | G1    |
+| Serial 7s                | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  | G1    |
+| Immediate 10-Word Recall | L  | G1 | L  | L  | -- | G1 | L  | L  | G1  | G1    |
+| Delayed 10-Word Recall   | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  | G1    |
+| 8-Word Recall Trial 1    | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  | G2    |
+| 8-Word Recall Trial 2    | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  | G2    |
+| 8-Word Recall Trial 3    | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  | G2    |
+| Delayed 8-Word Recall    | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  | G2    |
+| Visual Scanning          | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  | G2    |
+| Figure Copy              | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  | G2    |
+| Figure Recall            | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  | G2    |
+
+Note. L = linking item (item data simulated in both groups); G1 = item data simulated in Group 1 only; G2 = item data simulated in Group 2 only.
+
+-- item data not simulated in either group.
+
+\* - difficulty parameter changed from sample-estimated value (-2.103) to 0
+
+** - difficulty parameter changed from sample-estimated value (-2.451) to 1.928
+
+\^ - discrimination parameter changed to 4.0
+
+## Table 2
+
+Table 2. Parameter estimates from IRT analysis of the combined HRS + MHAS sample
+
+
+```r
+t2 <- coef(hrmecal, IRTpars = TRUE, simplify = TRUE)$items %>%
+  data.frame
+t2$order <- c(7, 4, 1, 12, 11, 2, 8, 9, 5, 6, 10, 3, 
+              18, 19, 17, 16, 13, 14, 15)
+t2 <- t2[order(t2$order),]
+t2$order <- NULL
+t2$b1 <- coalesce(t2$b1, t2$b)
+t2[c("b", "g", "u")] <- NULL
+t2$Item <- c("Orientation to day†", #1
+             "Orientation to month†", #2
+             "Orientation to year†", #3
+             "Orientation to date", #4
+             "President", #5
+             "Vice President", #6
+             "Backward Counting", #7
+             "Verbal Naming - Scissors", #8
+             "Verbal Naming - Cactus", #9
+             "Serial 7s", #10
+             "Immediate 10-Word Recall", #11
+             "Delayed 10-Word Recall", #12
+             "8-Word Recall Trial 1", #13
+             "8-Word Recall Trial 2", #14
+             "8-Word Recall Trial 3", #15
+             "Delayed 8-Word Recall", #16
+             "Visual Scanning", #17
+             "Figure Copy", #18
+             "Figure Recall") #19
+t2 <- select(t2, Item, everything())
+
+pandoc.table(t2, 
+             caption = "\n
+             Note. a = discrimination parameter; b1-b9 = threshold parameters.\n
+             †Natural linking item",
+             digits = c(0, rep(3, 10)),
+             keep.trailing.zeros = TRUE,
+             split.tables = Inf,
+             row.names = FALSE,
+             missing = "")
+```
+
+
+--------------------------------------------------------------------------------------------------------------
+           Item               a       b1      b2      b3       b4       b5        b6       b7      b8     b9  
+-------------------------- ------- -------- ------- ------- -------- --------- --------- ------- ------ ------
+   Orientation to day†      1.077   -2.103                                                                    
+
+  Orientation to month†     1.643   -2.451                                                                    
+
+   Orientation to year†     1.767   -1.928                                                                    
+
+   Orientation to date      0.774   -2.252                                                                    
+
+        President           1.799   -2.485                                                                    
+
+      Vice President        1.097   -2.049                                                                    
+
+    Backward Counting       1.139   -2.980                                                                    
+
+ Verbal Naming - Scissors   1.119   -4.726                                                                    
+
+  Verbal Naming - Cactus    1.473   -2.169                                                                    
+
+        Serial 7s           0.652   -4.896   -2.81   -1.87   -0.799   0.5784                                  
+
+ Immediate 10-Word Recall   3.944   -3.104   -2.14   -1.63   -1.120   -0.5852   0.6009    1.200   1.82   2.45 
+
+  Delayed 10-Word Recall    4.207   -2.365   -1.46   -1.01   -0.519   -0.0065   1.0496    1.549   2.03   2.54 
+
+  8-Word Recall Trial 1     1.791   -2.927   -2.12   -1.18   -0.242   0.6924    1.6662    2.792   4.02        
+
+  8-Word Recall Trial 2     2.650   -2.907   -2.47   -1.85   -1.091   -0.3189   0.4733    1.302   2.15        
+
+  8-Word Recall Trial 3     2.973   -2.620   -2.40   -1.98   -1.421   -0.7899   -0.1055   0.649   1.42        
+
+  Delayed 8-Word Recall     3.093   -2.467   -2.15   -1.73   -1.196   -0.6015   0.0764    0.831   1.59        
+
+     Visual Scanning        1.137   -2.948   -2.01   -1.14   -0.420   0.2097    0.7708    1.301   1.81   2.42 
+
+       Figure Copy          0.948   -2.857   -1.35                                                            
+
+      Figure Recall         0.891   -0.217   1.41                                                             
+--------------------------------------------------------------------------------------------------------------
+
+Table: 
+
+             Note. a = discrimination parameter; b1-b9 = threshold parameters.
+
+             †Natural linking item
+
+### Table 2a. Parameter estimates from IRT analysis of the HRS sample
+
+
+```r
+t2a <- coef(hrscal, IRTpars = TRUE, simplify = TRUE)$items %>%
+  data.frame
+t2a$order <- c(7, 4, 1, 12, 11, 2, 8, 9, 5, 6, 10, 3)
+t2a <- t2a[order(t2a$order),]
+t2a$order <- NULL
+t2a$b1 <- coalesce(t2a$b1, t2a$b)
+t2a[c("b", "g", "u")] <- NULL
+t2a$Item <- c("Orientation to day†", #1
+             "Orientation to month†", #2
+             "Orientation to year†", #3
+             "Orientation to date", #4
+             "President", #5
+             "Vice President", #6
+             "Backward Counting", #7
+             "Verbal Naming - Scissors", #8
+             "Verbal Naming - Cactus", #9
+             "Serial 7s", #10
+             "Immediate 10-Word Recall", #11
+             "Delayed 10-Word Recall") #12
+t2a <- select(t2a, Item, everything())
+
+read_docx() %>%  # a new, empty document
+  body_add_table(t2a %>% 
+                   mutate_if(is.numeric, round, 3) %>%
+                   replace(., is.na(.), ""), 
+                 style = "table_template") %>% 
+  print(target=file.path(resultsPath, "Table2a.docx"))
+
+pandoc.table(t2a, 
+             caption = "\n
+             Note. a = discrimination parameter; b1-b9 = threshold parameters.\n
+             †Natural linking item",
+             digits = c(0, rep(3, 10)),
+             keep.trailing.zeros = TRUE,
+             split.tables = Inf,
+             row.names = FALSE,
+             missing = "")
+```
+
+
+---------------------------------------------------------------------------------------------------------
+           Item               a      b1      b2      b3       b4       b5      b6      b7     b8     b9  
+-------------------------- ------- ------- ------- ------- -------- -------- ------- ------ ------ ------
+   Orientation to day†      1.546   -3.09                                                                
+
+  Orientation to month†     1.591   -3.14                                                                
+
+   Orientation to year†     2.144   -2.56                                                                
+
+   Orientation to date      0.727   -2.56                                                                
+
+        President           1.642   -2.86                                                                
+
+      Vice President        1.013   -2.37                                                                
+
+    Backward Counting       1.051   -3.37                                                                
+
+ Verbal Naming - Scissors   1.014   -5.35                                                                
+
+  Verbal Naming - Cactus    1.344   -2.52                                                                
+
+        Serial 7s           0.614   -5.35   -3.13   -2.13   -0.993   0.470                               
+
+ Immediate 10-Word Recall   3.703   -3.50   -2.46   -1.90   -1.347   -0.767   0.500   1.13   1.78   2.44 
+
+  Delayed 10-Word Recall    3.943   -2.68   -1.71   -1.22   -0.695   -0.145   0.973   1.50   2.00   2.54 
+---------------------------------------------------------------------------------------------------------
+
+Table: 
+
+             Note. a = discrimination parameter; b1-b9 = threshold parameters.
+
+             †Natural linking item
+
+
+### Table 2b. Parameter estimates from IRT analysis of the MHAS sample
+
+
+
+```r
+t2b <- coef(mexcal, IRTpars = TRUE, simplify = TRUE)$items %>%
+  data.frame
+t2b$order <- c(1, 9, 10,  
+              2, 8, 7, 4, 5, 6, 3)
+t2b <- t2b[order(t2b$order),]
+t2b$order <- NULL
+t2b$b1 <- coalesce(t2b$b1, t2b$b)
+t2b[c("b", "g", "u")] <- NULL
+t2b$Item <- c("Orientation to day†", #1
+             "Orientation to month†", #2
+             "Orientation to year†", #3
+             "8-Word Recall Trial 1", #4
+             "8-Word Recall Trial 2", #5
+             "8-Word Recall Trial 3", #6
+             "Delayed 8-Word Recall", #7
+             "Visual Scanning", #8
+             "Figure Copy", #9
+             "Figure Recall") #10
+t2b <- select(t2b, Item, everything())
+
+read_docx() %>%  # a new, empty document
+  body_add_table(t2b %>% 
+                   mutate_if(is.numeric, round, 3) %>%
+                   replace(., is.na(.), ""), 
+                 style = "table_template") %>% 
+  print(target=file.path(resultsPath, "Table2b.docx"))
+
+pandoc.table(t2b, 
+             caption = "\n
+             Note. a = discrimination parameter; b1-b9 = threshold parameters.\n
+             †Natural linking item",
+             digits = c(0, rep(3, 10)),
+             keep.trailing.zeros = TRUE,
+             split.tables = Inf,
+             row.names = FALSE,
+             missing = "")
+```
+
+
+-----------------------------------------------------------------------------------------------------------
+         Item              a       b1      b2      b3       b4       b5        b6       b7      b8     b9  
+----------------------- ------- -------- ------- ------- -------- -------- ---------- ------- ------ ------
+  Orientation to day†    0.882   -1.495                                                                    
+
+ Orientation to month†   1.465   -2.242                                                                    
+
+ Orientation to year†    1.515   -1.604                                                                    
+
+ 8-Word Recall Trial 1   1.847   -2.742   -1.96   -1.04   -0.136   0.770    1.71388    2.807   4.00        
+
+ 8-Word Recall Trial 2   2.767   -2.716   -2.29   -1.69   -0.954   -0.210   0.55452    1.355   2.17        
+
+ 8-Word Recall Trial 3   3.124   -2.433   -2.22   -1.81   -1.272   -0.663   -0.00411   0.723   1.47        
+
+ Delayed 8-Word Recall   3.139   -2.304   -2.00   -1.58   -1.063   -0.486   0.17094    0.905   1.64        
+
+    Visual Scanning      1.175   -2.756   -1.84   -1.01   -0.308   0.302    0.84471    1.358   1.85   2.44 
+
+      Figure Copy        0.980   -2.665   -1.20                                                            
+
+     Figure Recall       0.921   -0.111   1.46                                                             
+-----------------------------------------------------------------------------------------------------------
+
+Table: 
+
+             Note. a = discrimination parameter; b1-b9 = threshold parameters.
+
+             †Natural linking item
+
+## Table 3. Simulation Results for the Combined Group 
+
+(population parameters: $\mu_{CG} = -0.12$, $\sigma_{CG} = 0.941$)
+
+
+```r
+t3 <- sumstat %>%
+  mutate_if(is.numeric, round, 3) %>%
+  dplyr::select(scenario, mean, sd, bias, ese, rmse, r_theta_est, mean_st, sd_st, bias_st, ese_st, rmse_st) %>%
+  filter(group == "Combined")
+```
+
+```
+## `mutate_if()` ignored the following grouping variables:
+## Column `group`
+```
+
+```
+## Adding missing grouping variables: `group`
+```
+
+```r
+pandoc.table(t3,
+             digits = 3,
+             keep.trailing.zeros = TRUE,
+             split.tables = Inf,
+             row.names = FALSE)
+```
+
+
+----------------------------------------------------------------------------------------------------------------------------
+  group     scenario    mean     sd      bias     ese    rmse    r_theta_est   mean_st   sd_st   bias_st   ese_st   rmse_st 
+---------- ---------- -------- ------- -------- ------- ------- ------------- --------- ------- --------- -------- ---------
+ Combined      1       -0.127   1.022   -0.007   0.031   0.261      0.969      -0.120    0.936    0.000    0.029     0.231  
+
+ Combined      2       -0.127   0.982   -0.007   0.070   0.359      0.936      -0.121    0.932   -0.001    0.029     0.333  
+
+ Combined      3       -0.121   0.997   -0.001   0.034   0.320      0.948      -0.122    0.934   -0.002    0.030     0.300  
+
+ Combined      4       -0.116   0.975   0.004    0.030   0.363      0.930      -0.121    0.935   -0.001    0.029     0.350  
+
+ Combined      5       -0.126   0.997   -0.006   0.031   0.326      0.946      -0.121    0.933   -0.001    0.028     0.305  
+
+ Combined      6       -0.123   0.976   -0.003   0.097   0.378      0.931      -0.121    0.932   -0.001    0.029     0.345  
+
+ Combined      7       -0.118   0.995   0.002    0.034   0.321      0.948      -0.122    0.934   -0.002    0.030     0.302  
+
+ Combined      8       -0.123   0.997   -0.003   0.035   0.324      0.947      -0.122    0.934   -0.002    0.030     0.303  
+
+ Combined      9       -0.119   0.988   0.001    0.044   0.344      0.940      -0.121    0.932   -0.001    0.028     0.323  
+
+ Combined      10      -0.123   1.002   -0.003   0.033   0.302      0.955      -0.121    0.932   -0.001    0.028     0.279  
+----------------------------------------------------------------------------------------------------------------------------
+
+
+## Table 4. Simulation Results for Group 1 
+
+(population parameters: $\mu_{\theta_{G1}} = 0$, $\sigma_{\theta_{G1}} = 0.872$)
+
+
+```r
+t4 <- sumstat %>%
+  mutate_if(is.numeric, round, 3) %>%
+  dplyr::select(scenario, mean, sd, bias, ese, rmse, r_theta_est, mean_st, sd_st, bias_st, ese_st, rmse_st) %>%
+  filter(group == "Group 1")
+```
+
+```
+## `mutate_if()` ignored the following grouping variables:
+## Column `group`
+```
+
+```
+## Adding missing grouping variables: `group`
+```
+
+```r
+pandoc.table(t4,
+             digits = 3,
+             keep.trailing.zeros = TRUE,
+             split.tables = Inf,
+             row.names = FALSE)
+```
+
+
+---------------------------------------------------------------------------------------------------------------------------
+  group    scenario    mean     sd      bias     ese    rmse    r_theta_est   mean_st   sd_st   bias_st   ese_st   rmse_st 
+--------- ---------- -------- ------- -------- ------- ------- ------------- --------- ------- --------- -------- ---------
+ Group 1      1       -0.002   0.967   -0.002   0.001   0.261      0.965      -0.006    0.887   -0.006    0.036     0.232  
+
+ Group 1      2       -0.082   0.954   -0.082   0.062   0.371      0.931      -0.078    0.906   -0.078    0.031     0.342  
+
+ Group 1      3       -0.014   0.943   -0.014   0.005   0.345      0.932      -0.022    0.884   -0.022    0.038     0.326  
+
+ Group 1      4       0.000    0.927   0.000    0.000   0.364      0.921      -0.010    0.888   -0.010    0.038     0.351  
+
+ Group 1      5       -0.001   0.942   -0.001   0.001   0.327      0.939      -0.004    0.881   -0.004    0.038     0.306  
+
+ Group 1      6       -0.107   0.964   -0.107   0.088   0.390      0.931      -0.105    0.921   -0.105    0.030     0.354  
+
+ Group 1      7       -0.015   0.945   -0.015   0.005   0.346      0.932      -0.026    0.888   -0.026    0.038     0.327  
+
+ Group 1      8       -0.018   0.944   -0.018   0.007   0.352      0.929      -0.024    0.885   -0.024    0.038     0.332  
+
+ Group 1      9       -0.059   0.969   -0.059   0.022   0.355      0.935      -0.066    0.914   -0.066    0.035     0.332  
+
+ Group 1      10      -0.017   0.976   -0.017   0.006   0.311      0.951      -0.023    0.909   -0.023    0.038     0.282  
+---------------------------------------------------------------------------------------------------------------------------
+
+
+## Table 5. Simulation Results for Group 2
+
+(population parameters: $\mu_{\theta_{G2}} = -0.24$, $\sigma_{\theta_{G2}} = 0.977$)
+
+
+```r
+t5 <- sumstat %>%
+  mutate_if(is.numeric, round, 3) %>%
+  dplyr::select(scenario, mean, sd, bias, ese, rmse, r_theta_est, mean_st, sd_st, bias_st, ese_st, rmse_st) %>%
+  filter(group == "Group 2")
+```
+
+```
+## `mutate_if()` ignored the following grouping variables:
+## Column `group`
+```
+
+```
+## Adding missing grouping variables: `group`
+```
+
+```r
+pandoc.table(t5,
+             digits = 3,
+             keep.trailing.zeros = TRUE,
+             split.tables = Inf,
+             row.names = FALSE)
+```
+
+
+---------------------------------------------------------------------------------------------------------------------------
+  group    scenario    mean     sd      bias     ese    rmse    r_theta_est   mean_st   sd_st   bias_st   ese_st   rmse_st 
+--------- ---------- -------- ------- -------- ------- ------- ------------- --------- ------- --------- -------- ---------
+ Group 2      1       -0.252   1.058   -0.012   0.062   0.260      0.972      -0.235    0.969    0.005    0.044     0.230  
+
+ Group 2      2       -0.173   1.008   0.067    0.081   0.346      0.947      -0.165    0.957    0.075    0.033     0.324  
+
+ Group 2      3       -0.228   1.037   0.012    0.064   0.292      0.961      -0.223    0.971    0.017    0.044     0.271  
+
+ Group 2      4       -0.232   1.008   0.008    0.061   0.362      0.935      -0.232    0.965    0.008    0.044     0.349  
+
+ Group 2      5       -0.250   1.035   -0.010   0.062   0.325      0.951      -0.237    0.967    0.003    0.042     0.304  
+
+ Group 2      6       -0.140   0.988   0.100    0.106   0.365      0.945      -0.138    0.944    0.102    0.031     0.335  
+
+ Group 2      7       -0.220   1.031   0.020    0.063   0.295      0.960      -0.219    0.969    0.021    0.044     0.276  
+
+ Group 2      8       -0.227   1.036   0.013    0.066   0.292      0.961      -0.220    0.971    0.020    0.044     0.271  
+
+ Group 2      9       -0.178   1.005   0.062    0.066   0.332      0.949      -0.177    0.947    0.063    0.036     0.315  
+
+ Group 2      10      -0.228   1.016   0.012    0.061   0.293      0.959      -0.219    0.945    0.021    0.039     0.275  
+---------------------------------------------------------------------------------------------------------------------------
+
+
+## Figure 1
+
+Empirical sampling distributions of sample factor score means (unstandardized) derived from 500 simulations of each harmonization scenario. Each point represents one sample mean. Boxplots show median, approximate 95% confidence intervals for the median (as notches in the boxplot), interquartile range (hinges), and 1.5 times the interquartile range (whiskers). Dashed vertical lines represent the population mean ($\mu_{\theta_{CG}} = -0.12$, $\mu_{\theta_{G1}} = 0$, $\mu_{\theta_{G2}} = -0.24$).
+
+
+```r
+knitr::include_graphics(file.path(plotPath, "Figure_raw.png"))
+```
+
+<img src="Output/2020-10-09_01-01-PM/Plots/Figure_raw.png" width="1950" />
+
+## Figure 2
+
+Bland-Altman plots showing unstandardized data from 500 randomly selected simulated respondents per scenario. The x-axis represents the data generating $\theta_i$ values, and the y-axis represents the unstandardized residuals ($x_i - \theta_i$) broken down by group and scenario. Dashed horizontal lines are drawn at ± 0.30 raw score units from 0.
+
+
+```r
+knitr::include_graphics(file.path(plotPath, "BlandAltman_us.png"))
+```
+
+<img src="Output/2020-10-09_01-01-PM/Plots/BlandAltman_us.png" width="1950" />
+
+### Unstandardized factor score estimates outside of |.30| units in the two subgroups
+
+
+```r
+pandoc.table(f3dat1,
+             digits = 3,
+             keep.trailing.zeros = TRUE,
+             split.tables = Inf,
+             row.names = FALSE,
+             col.names = c("Within 0.3", "Scenario", "Group", "Proportion"))
+```
+
+
+--------------------------------------------
+ Within 0.3   Scenario   Group   Proportion 
+------------ ---------- ------- ------------
+     0           1         1       0.125    
+
+     1           1         1       0.875    
+
+     0           2         1       0.143    
+
+     1           2         1       0.857    
+
+     0           3         1       0.179    
+
+     1           3         1       0.821    
+
+     0           4         1       0.201    
+
+     1           4         1       0.799    
+
+     0           5         1       0.174    
+
+     1           5         1       0.826    
+
+     0           6         1       0.137    
+
+     1           6         1       0.863    
+
+     0           7         1       0.178    
+
+     1           7         1       0.822    
+
+     0           8         1       0.180    
+
+     1           8         1       0.820    
+
+     0           9         1       0.150    
+
+     1           9         1       0.850    
+
+     0           10        1       0.151    
+
+     1           10        1       0.849    
+
+     0           1         2       0.113    
+
+     1           1         2       0.887    
+
+     0           2         2       0.244    
+
+     1           2         2       0.756    
+
+     0           3         2       0.160    
+
+     1           3         2       0.840    
+
+     0           4         2       0.203    
+
+     1           4         2       0.797    
+
+     0           5         2       0.168    
+
+     1           5         2       0.832    
+
+     0           6         2       0.283    
+
+     1           6         2       0.717    
+
+     0           7         2       0.168    
+
+     1           7         2       0.832    
+
+     0           8         2       0.161    
+
+     1           8         2       0.839    
+
+     0           9         2       0.231    
+
+     1           9         2       0.769    
+
+     0           10        2       0.159    
+
+     1           10        2       0.841    
+--------------------------------------------
+
+### Unstandardized factor score estimates outside of |.30| units in the combined sample
+
+
+```r
+pandoc.table(f3dat2,
+             digits = 3,
+             keep.trailing.zeros = TRUE,
+             split.tables = Inf,
+             row.names = FALSE,
+             col.names = c("Within 0.3", "Scenario", "Proportion"))
+```
+
+
+------------------------------------
+ Within 0.3   Scenario   Proportion 
+------------ ---------- ------------
+     0           1         0.119    
+
+     1           1         0.881    
+
+     0           2         0.193    
+
+     1           2         0.807    
+
+     0           3         0.169    
+
+     1           3         0.831    
+
+     0           4         0.202    
+
+     1           4         0.798    
+
+     0           5         0.171    
+
+     1           5         0.829    
+
+     0           6         0.210    
+
+     1           6         0.790    
+
+     0           7         0.173    
+
+     1           7         0.827    
+
+     0           8         0.171    
+
+     1           8         0.829    
+
+     0           9         0.191    
+
+     1           9         0.809    
+
+     0           10        0.155    
+
+     1           10        0.845    
+------------------------------------
+
