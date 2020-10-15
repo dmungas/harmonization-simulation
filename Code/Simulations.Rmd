@@ -11,6 +11,7 @@ output:
     toc: yes
     toc_depth: 3
     toc_float: yes
+    keep_md: TRUE
 knit: (
   function(inputFile, encoding) { 
 
@@ -36,6 +37,9 @@ This simulation generates factor scores by fixing the item parameter estimates t
 ```{r simSettings}
 # ----------------------------Set Simulation Options -----------------------------
 
+runOrRead <- "read" # If "read", reads in old files. If "run," generates new simulations.
+readFolder <- "Output/2020-10-05_11-00-AM/Results"
+
 Seed <- 21589
 mus <- c(0, -0.24)
 #sigmas <- c(sd_hrs, sd_mhas)
@@ -52,7 +56,8 @@ n2 <- 500
 # Load packages
 library(pacman)
 p_load(tidyverse, pander, readr, mirt, tidyr, ggplot2, lubridate, 
-       DT, RColorBrewer, ggthemes, officer, knitr, knitrProgressBar)
+       DT, RColorBrewer, ggthemes, officer, knitr, knitrProgressBar,
+       stringr)
 #source("~/Research/Code/runMplus.R")
 #source("~/Research/Code/extractVarNames.R")
 #source("Code/simulation_functions.R")
@@ -1075,7 +1080,6 @@ summaryStats <- function(df) {
   sumout <- sumout[c(2, 3, 1), ]
   
   # Calculate relative bias in the unstandardized grand means.
-  # Constant of 1 added for Group 1, whose population mean is 0.
   sumout$bias <- NA
   sumout$bias_pct <- NA
   
@@ -1088,7 +1092,6 @@ summaryStats <- function(df) {
   
   
   # Calculate relative bias in the standardized grand means.
-  # Constant of 1 added for Group 1, whose population mean is 0.
   sumout$bias_st <- NA
   sumout$bias_pct_st <- NA
   
@@ -1298,6 +1301,7 @@ sigmas <- c(sd_hrs, sd_mhas)
 
 items <- union(vars,varsm)
 
+if(runOrRead == "run") {
 scen_1 <- equateSim(seed = Seed, 
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -1317,13 +1321,19 @@ scen_1 <- equateSim(seed = Seed,
                     log_file = file.path(logPath, "scenario1.txt"),
                     verbose = FALSE, 
                     prog_bar = TRUE)
+} 
+
+if(runOrRead == "read") {
+  scen_1 <- readRDS(file.path(readFolder, "scen_1.Rds"))
+}
 
 sumstat1 <- summaryStats(scen_1[["summary"]])
 longstat1 <- scen_1[["summary"]]
 ds1 <- scen_1$datasets
 
+if(runOrRead == "run") {
 saveRDS(scen_1, file=file.path(resultsPath, "scen_1.Rds"))
-
+}
 
 ### end scenario 1
 ```
@@ -1333,6 +1343,7 @@ saveRDS(scen_1, file=file.path(resultsPath, "scen_1.Rds"))
 ```{r scen2}
 ### scenario 2 - UMON. UDAY, UYER as linking items, actual items in HRS and MHAS
 
+if(runOrRead == "run") {
 scen_2 <- equateSim(seed = Seed,
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -1352,13 +1363,20 @@ scen_2 <- equateSim(seed = Seed,
                     log_file = file.path(logPath, "scenario2.txt"),
                     verbose = FALSE, 
                     prog_bar = TRUE)
+}
+
+if(runOrRead == "read") {
+  scen_2 <- readRDS(file.path(readFolder, "scen_2.Rds"))
+}
 
 sumstat2 <- summaryStats(scen_2[["summary"]])
 longstat2 <- scen_2[["summary"]]
 ds2 <- scen_2$datasets
 
+if(runOrRead == "run") {
 saveRDS(scen_2, file=file.path(resultsPath, "scen_2.Rds"))
-
+}
+  
 ### end scenario 2
 ```
 
@@ -1369,6 +1387,7 @@ saveRDS(scen_2, file=file.path(resultsPath, "scen_2.Rds"))
 
 itms2 <- c(varsm,"UIWR")
 
+if(runOrRead == "run") {
 scen_3 <- equateSim(seed = Seed,
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -1388,13 +1407,19 @@ scen_3 <- equateSim(seed = Seed,
                     log_file = file.path(logPath, "scenario3.txt"),
                     verbose = FALSE, 
                     prog_bar = TRUE)
+}
+
+if(runOrRead == "read") {
+  scen_3 <- readRDS(file.path(readFolder, "scen_3.Rds"))
+}
 
 sumstat3 <- summaryStats(scen_3[["summary"]])
 longstat3 <- scen_3[["summary"]]
 ds3 <- scen_3$datasets
 
+if(runOrRead == "run") {
 saveRDS(scen_3, file=file.path(resultsPath, "scen_3.Rds"))
-
+}
 ### end scenario 3
 ```
 
@@ -1403,7 +1428,7 @@ saveRDS(scen_3, file=file.path(resultsPath, "scen_3.Rds"))
 ```{r scen4}
 ### scenario 4 - HRS Items in both studies
 
-
+if(runOrRead == "run") {
 scen_4 <- equateSim(seed = Seed,
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -1423,13 +1448,20 @@ scen_4 <- equateSim(seed = Seed,
                     log_file = file.path(logPath, "scenario4.txt"),
                     verbose = FALSE, 
                     prog_bar = TRUE)
+}
+
+if(runOrRead == "read") {
+  scen_4 <- readRDS(file.path(readFolder, "scen_4.Rds"))
+}
 
 sumstat4 <- summaryStats(scen_4[["summary"]])
 longstat4 <- scen_4[["summary"]]
 ds4 <- scen_4$datasets
 
+if(runOrRead == "run") {
 saveRDS(scen_4, file=file.path(resultsPath, "scen_4.Rds"))
-
+}
+  
 ### end scenario 4
 ```
 
@@ -1438,7 +1470,7 @@ saveRDS(scen_4, file=file.path(resultsPath, "scen_4.Rds"))
 ```{r scen5}
 ### scenario 5 - MHAS Items in both studies
 
-
+if(runOrRead == "run") {
 scen_5 <- equateSim(seed = Seed,
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -1458,13 +1490,19 @@ scen_5 <- equateSim(seed = Seed,
                     log_file = file.path(logPath, "scenario5.txt"),
                     verbose = FALSE, 
                     prog_bar = TRUE)
+}
+
+if(runOrRead == "read") {
+  scen_5 <- readRDS(file.path(readFolder, "scen_5.Rds"))
+}
 
 sumstat5 <- summaryStats(scen_5[["summary"]])
 longstat5 <- scen_5[["summary"]]
 ds5 <- scen_5$datasets
 
+if(runOrRead == "run") {
 saveRDS(scen_5, file=file.path(resultsPath, "scen_5.Rds"))
-
+}
 
 ### end scenario 5
 ```
@@ -1477,6 +1515,7 @@ saveRDS(scen_5, file=file.path(resultsPath, "scen_5.Rds"))
 vars6 <- vars[!vars %in% c("UMON",'UYER')]
 varsm6 <- varsm[!varsm %in% c("UMON",'UYER')]
 
+if(runOrRead == "run") {
 scen_6 <- equateSim(seed = Seed,
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -1496,12 +1535,19 @@ scen_6 <- equateSim(seed = Seed,
                     log_file = file.path(logPath, "scenario6.txt"),
                     verbose = FALSE, 
                     prog_bar = TRUE)
+}
+
+if(runOrRead == "read") {
+  scen_6 <- readRDS(file.path(readFolder, "scen_6.Rds"))
+}
 
 sumstat6 <- summaryStats(scen_6[["summary"]])
 longstat6 <- scen_6[["summary"]]
 ds6 <- scen_6$datasets
 
+if(runOrRead == "run") {
 saveRDS(scen_6, file=file.path(resultsPath, "scen_6.Rds"))
+}
 
 ### end scenario 6
 ```
@@ -1513,7 +1559,7 @@ saveRDS(scen_6, file=file.path(resultsPath, "scen_6.Rds"))
 
 varsm7 <- c(varsm[!varsm %in% c("UMON",'UYER','UDAY')],'UIWR')
 
-
+if(runOrRead == "run") {
 scen_7 <- equateSim(seed = Seed,
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -1533,13 +1579,19 @@ scen_7 <- equateSim(seed = Seed,
                     log_file = file.path(logPath, "scenario7.txt"),
                     verbose = FALSE, 
                     prog_bar = TRUE)
+}
+
+if(runOrRead == "read") {
+  scen_7 <- readRDS(file.path(readFolder, "scen_7.Rds"))
+}
 
 sumstat7 <- summaryStats(scen_7[["summary"]])
 longstat7 <- scen_7[["summary"]]
 ds7 <- scen_7$datasets
 
+if(runOrRead == "run") {
 saveRDS(scen_7, file=file.path(resultsPath, "scen_7.Rds"))
-
+}
 ### end scenario 7
 ```
 
@@ -1551,7 +1603,7 @@ saveRDS(scen_7, file=file.path(resultsPath, "scen_7.Rds"))
 vars8 <- vars[!vars %in% c("UMON",'UYER','UDAY')]
 varsm8 <- c(varsm,'UIWR')
 
-
+if(runOrRead == "run") {
 scen_8 <- equateSim(seed = Seed,
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -1571,19 +1623,27 @@ scen_8 <- equateSim(seed = Seed,
                     log_file = file.path(logPath, "scenario8.txt"),
                     verbose = FALSE, 
                     prog_bar = TRUE)
+}
+
+if(runOrRead == "read") {
+  scen_8 <- readRDS(file.path(readFolder, "scen_8.Rds"))
+}
 
 sumstat8 <- summaryStats(scen_8[["summary"]])
 longstat8 <- scen_8[["summary"]]
 ds8 <- scen_8$datasets
 
+if(runOrRead == "run") {
 saveRDS(scen_8, file=file.path(resultsPath, "scen_8.Rds"))
-
+}
 ### end scenario 8
 ```
 
 ### Scenario 9
 
 ```{r scen9}
+
+if(runOrRead == "run") {
 scen_9 <- equateSim(seed = Seed, 
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -1606,19 +1666,27 @@ scen_9 <- equateSim(seed = Seed,
                     man_override = list(iname = c("UDAY", "UMON"),
                                         parameter = c("b", "b"), 
                                         val = c(0, 1.928)))
+}
+
+if(runOrRead == "read") {
+  scen_9 <- readRDS(file.path(readFolder, "scen_9.Rds"))
+}
 
 sumstat9 <- summaryStats(scen_9[["summary"]])
 longstat9 <- scen_9[["summary"]]
 ds9 <- scen_9$datasets
 
+if(runOrRead == "run") {
 saveRDS(scen_9, file=file.path(resultsPath, "scen_9.Rds"))
-
+}
 ### end scenario 9
 ```
 
 ### Scenario 10
 
 ```{r scen10}
+
+if(runOrRead == "run") {
 scen_10 <- equateSim(seed = Seed, 
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -1641,83 +1709,73 @@ scen_10 <- equateSim(seed = Seed,
                     man_override = list(iname = c("UDAY", "UMON", "UDAY", "UMON", "UYER"),
                                         parameter = c("b", "b", "a1", "a1", "a1"), 
                                         val = c(0, 1.928, 4, 4, 4)))
+}
+
+if(runOrRead == "read") {
+  scen_10 <- readRDS(file.path(readFolder, "scen_10.Rds"))
+}
 
 sumstat10 <- summaryStats(scen_10[["summary"]])
 longstat10 <- scen_10[["summary"]]
 ds10 <- scen_10$datasets
 
+if(runOrRead == "run") {
 saveRDS(scen_10, file=file.path(resultsPath, "scen_10.Rds"))
-
+}
 ### end scenario 10
 ```
 
 ## Combine and Process Simulated Data
 
 ```{r mergeSims}
+
+nscen <- sum(str_detect(ls(), "^scen_[0-9]"))
+
 ### Merge summary statistics from scenarios
 
-sumstat1$scenario <- 1
-sumstat2$scenario <- 2
-sumstat3$scenario <- 3
-sumstat4$scenario <- 4
-sumstat5$scenario <- 5
-sumstat6$scenario <- 6
-sumstat7$scenario <- 7
-sumstat8$scenario <- 8
-sumstat9$scenario <- 9
-sumstat10$scenario <- 10
+if(nscen > 0){
+for(ns in 1:nscen){
+  temp <- dynGet(paste0("sumstat", ns))
+  temp$scenario <- ns
+  assign(paste0("sumstat", ns), temp)
+  
+  temp <- dynGet(paste0("longstat", ns))
+  temp$scenario <- ns
+  assign(paste0("longstat", ns), temp)
+  
+  temp <- dynGet(paste0("ds", ns))
+  temp$scenario <- ns
+  assign(paste0("ds", ns), temp)
+}
+}
 
-longstat1$scenario <- 1
-longstat2$scenario <- 2
-longstat3$scenario <- 3
-longstat4$scenario <- 4
-longstat5$scenario <- 5
-longstat6$scenario <- 6
-longstat7$scenario <- 7
-longstat8$scenario <- 8
-longstat9$scenario <- 9
-longstat10$scenario <- 10
+longstat <- lapply(paste0("longstat", 1:nscen), dynGet) %>%
+  do.call(bind_rows, .)
 
-longstat <- bind_rows(longstat1,
-                      longstat2,
-                      longstat3,
-                      longstat4,
-                      longstat5,
-                      longstat6,
-                      longstat7,
-                      longstat8,
-                      longstat9, longstat10
-                      )
+dsAll <- lapply(paste0("ds", 1:nscen), dynGet) %>%
+  do.call(bind_rows, .)
 
-ds1$scenario <- 1
-ds2$scenario <- 2
-ds3$scenario <- 3
-ds4$scenario <- 4
-ds5$scenario <- 5
-ds6$scenario <- 6
-ds7$scenario <- 7
-ds8$scenario <- 8
-ds9$scenario <- 9
-ds10$scenario <- 10
+sumstat <- lapply(paste0("sumstat", 1:nscen), dynGet) %>%
+  do.call(bind_rows, .)
 
-dsAll <- bind_rows(ds1, ds2, ds3, ds4, ds5, ds6, ds7, ds8, ds9, ds10
-                   )
+scenLabs <- c(
+  "HRS+MHAS_all_shared",
+  "HRS+MHAS_UMON_UDAY_UYER_shared",
+  "HRS+MHAS_UMON_UDAY_UYER_UIWR_shared",
+  "HRS_all_shared",
+  "MHAS_all_shared",
+  "HRS+HMAS_UDAY_shared",
+  "HRS+MHAS_UIWR_shared_no_MHAS_dates",
+  "HRS+MHAS_UIWR_shared_no_HRS_dates",
+  "HRS+MHAS_UMON(b=1.928)_UDAY(b=0)_UYER(b=-1.928)_shared",
+  "HRS+MHAS_UMON(b=1.928,a1=4)_UDAY(b=0,a1=4)_UYER(b=-1.928,a1=4)_shared"
+)
 
-sumstat <- rbind(sumstat1,sumstat2,sumstat3,sumstat4,sumstat5,sumstat6, sumstat7, sumstat8, sumstat9, sumstat10
-                 )
 sumstat$scenario_label <- factor(sumstat$scenario, 
-                                 levels = 1:10, 
-                                 labels = c("HRS+MHAS_all_shared",
-                                            "HRS+MHAS_UMON_UDAY_UYER_shared",
-                                            "HRS+MHAS_UMON_UDAY_UYER_UIWR_shared",
-                                            "HRS_all_shared",
-                                            "MHAS_all_shared",
-                                            "HRS+HMAS_UDAY_shared",
-                                            "HRS+MHAS_UIWR_shared_no_MHAS_dates",
-                                            "HRS+MHAS_UIWR_shared_no_HRS_dates",
-                                            "HRS+MHAS_UMON(b=1.928)_UDAY(b=0)_UYER(b=-1.928)_shared", 
-                                 "HRS+MHAS_UMON(b=1.928,a1=4)_UDAY(b=0,a1=4)_UYER(b=-1.928,a1=4)_shared"))
+                                 levels = 1:nscen, 
+                                 labels = scenLabs[1:nscen])
 
+if(runOrRead == "run") {
 saveRDS(sumstat,file=file.path(resultsPath, paste0("sumstat_", outFolderName, ".rds")))
 #sumstat <- readRDS("Results/sumstat_2020-07-08-18-13.rds")
 
@@ -1725,6 +1783,14 @@ save(list = ls(all.names = TRUE),
      file=file.path(resultsPath, paste0("simulation_results_", outFolderName, ".RData")),
      envir = environment())
 #load("Output/2020-08-06_09-04-AM/Results/simulation_results_2020-08-06_09-04-AM.RData")
+
+write.csv(sumstat, file=file.path(resultsPath, paste0("sumstat", outFolderName, ".csv")))
+}
+
+if(runOrRead == "read") {
+  #sumstat <- readRDS(file.path(readFolder, paste0("sumstat_", str_sub(readFolder, 8, -9), ".Rds")))
+  write.csv(sumstat, file=file.path(resultsPath, paste0("sumstat", outFolderName, ".csv")))
+}
 ```
 
 ### Create Tables
@@ -1733,6 +1799,7 @@ save(list = ls(all.names = TRUE),
 DT::datatable(sumstat, options = list(pageLength = 30), rownames = FALSE) %>%
   formatRound(columns = names(sumstat)[-c(1, ncol(sumstat))], digits = 3) %>%
   formatRound(columns = c("n_rep", "scenario"), digits = 0)
+
 
 read_docx() %>%  # a new, empty document
   body_add_table(sumstat %>% 
@@ -1761,8 +1828,6 @@ read_docx() %>%  # a new, empty document
 
 ```{r plots}
 # Plot scenarios
-
-nscen <- 10
 
 sumlong <- sumstat %>%
   dplyr::select(group, mean, mean_st, sd, sd_st, n_rep, scenario) %>%
@@ -1805,6 +1870,9 @@ if(!exists("geom_flat_violin")) {
   source("https://gist.githubusercontent.com/benmarwick/2a1bb0133ff568cbe28d/raw/fb53bd97121f7f9ce947837ef1a4c65a73bffb3f/geom_flat_violin.R")
 }
 
+s1cols <- brewer.pal(9, "Set1")
+s1cols <- c(s1cols, "#232654")
+
 for(s in unique(longstat$type)){
   rcp <- longstat %>%
     filter(type == s) %>%
@@ -1824,8 +1892,10 @@ for(s in unique(longstat$type)){
     expand_limits(x = max(longstat$scenario) + 1) +
     xlab("") +
     facet_wrap(~Group, ncol = 3) +
-    scale_colour_brewer(name = "Scenario", palette = "Set1") +
-    scale_fill_brewer(name = "Scenario", palette = "Set1") +
+    scale_colour_manual(name = "Scenario", values = s1cols) + 
+    scale_fill_manual(name = "Scenario", values = s1cols) + 
+    #scale_colour_brewer(name = "Scenario", palette = "Set3") +
+    #scale_fill_brewer(name = "Scenario", palette = "Set3") +
     geom_hline(data = thetalines3, aes(yintercept = value), 
                lty = 2) +
     theme_few() + 
@@ -1941,27 +2011,27 @@ f4dat2 <- table(badat$w30_st, badat$scenario) %>%
 
 Table 1. Nine simulation scenarios manipulating linking items and non-linking items.
 
-| Item                     | 1  | 2  | 3  | 4  | 5  | 6  | 7  | 8  | 9   | 
-|:------------------------ |:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:---:|
-| Orientation to day       | L  | L  | L  | L  | L  | L  | G1 | G2 | L*  | 
-| Orientation to month     | L  | L  | L  | L  | L  | G1 | G1 | G2 | L** | 
-| Orientation to year      | L  | L  | L  | L  | L  | G1 | G1 | G2 | L   |
-| Orientation to date      | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  |
-| President                | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  |
-| Vice President           | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  |
-| Backward Counting        | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  |
-| Verbal Naming - Scissors | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  |
-| Verbal Naming - Cactus   | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  |
-| Serial 7s                | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  |
-| Immediate 10-Word Recall | L  | G1 | L  | L  | -- | G1 | L  | L  | G1  |
-| Delayed 10-Word Recall   | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  |
-| 8-Word Recall Trial 1    | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  |
-| 8-Word Recall Trial 2    | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  |
-| 8-Word Recall Trial 3    | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  |
-| Delayed 8-Word Recall    | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  |
-| Visual Scanning          | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  |
-| Figure Copy              | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  |
-| Figure Recall            | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  |
+| Item                     | 1  | 2  | 3  | 4  | 5  | 6  | 7  | 8  | 9   | 10    |
+|:------------------------ |:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:---:|:-----:|
+| Orientation to day       | L  | L  | L  | L  | L  | L  | G1 | G2 | L*  | L*\^  | 
+| Orientation to month     | L  | L  | L  | L  | L  | G1 | G1 | G2 | L** | L**\^ | 
+| Orientation to year      | L  | L  | L  | L  | L  | G1 | G1 | G2 | L   | L\^   |
+| Orientation to date      | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  | G1    |
+| President                | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  | G1    |
+| Vice President           | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  | G1    |
+| Backward Counting        | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  | G1    |
+| Verbal Naming - Scissors | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  | G1    |
+| Verbal Naming - Cactus   | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  | G1    |
+| Serial 7s                | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  | G1    |
+| Immediate 10-Word Recall | L  | G1 | L  | L  | -- | G1 | L  | L  | G1  | G1    |
+| Delayed 10-Word Recall   | L  | G1 | G1 | L  | -- | G1 | G1 | G1 | G1  | G1    |
+| 8-Word Recall Trial 1    | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  | G2    |
+| 8-Word Recall Trial 2    | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  | G2    |
+| 8-Word Recall Trial 3    | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  | G2    |
+| Delayed 8-Word Recall    | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  | G2    |
+| Visual Scanning          | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  | G2    |
+| Figure Copy              | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  | G2    |
+| Figure Recall            | L  | G2 | G2 | -- | L  | G2 | G2 | G2 | G2  | G2    |
 
 Note. L = linking item (item data simulated in both groups); G1 = item data simulated in Group 1 only; G2 = item data simulated in Group 2 only.
 
@@ -1971,6 +2041,7 @@ Note. L = linking item (item data simulated in both groups); G1 = item data simu
 
 ** - difficulty parameter changed from sample-estimated value (-2.451) to 1.928
 
+\^ - discrimination parameter changed to 4.0
 
 ## Table 2
 
