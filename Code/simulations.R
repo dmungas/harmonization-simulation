@@ -115,25 +115,14 @@ row.names(mean_sd) <- c("Group 1","Group 2","Combined")
 
 # ----------------------------end mirt calibration -----------------------------
 
+
 # *************************** Simulation Scenarios *****************************
-
-
-# Set all scenarios' arguments for consistency
-
-Seed <- 21589
-mus <- c(0, -0.24)
-sigmas <- c(sd_hrs, sd_mhas)
-refGrp <- 1
-repTheta <- 1
-reps <- 500
-fsMeth <- "EAP"
-n1 <- 500
-n2 <- 500
 
 ### scenario 1 - all items shared
 
 items <- union(vars,varsm)
 
+if(runOrRead == "run") {
 scen_1 <- equateSim(seed = Seed, 
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -150,19 +139,33 @@ scen_1 <- equateSim(seed = Seed,
                     n_samp2 = n2,
                     save_sims = TRUE,
                     save_log = TRUE,
-                    log_file = "Logs/scenario1.txt",
+                    log_file = file.path(logPath, "scenario1.txt"),
                     verbose = FALSE, 
-                    prog_bar = TRUE)
+                    prog_bar = TRUE,
+                    scale_lv = "fix_sample_est")
+} 
+
+if(runOrRead == "read") {
+  scen_1 <- readRDS(file.path(readFolder, "scen_1.Rds"))
+}
 
 sumstat1 <- summaryStats(scen_1[["summary"]])
 longstat1 <- scen_1[["summary"]]
 ds1 <- scen_1$datasets
 
+if(runOrRead == "run") {
+saveRDS(scen_1, file=file.path(resultsPath, "scen_1.Rds"))
+}
 
 ### end scenario 1
 
+
+### Scenario 2
+
+
 ### scenario 2 - UMON. UDAY, UYER as linking items, actual items in HRS and MHAS
 
+if(runOrRead == "run") {
 scen_2 <- equateSim(seed = Seed,
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -179,25 +182,35 @@ scen_2 <- equateSim(seed = Seed,
                     n_samp2 = n2,
                     save_sims = TRUE,
                     save_log = TRUE,
-                    log_file = "Logs/scenario2.txt",
+                    log_file = file.path(logPath, "scenario2.txt"),
                     verbose = FALSE, 
-                    prog_bar = TRUE)
+                    prog_bar = TRUE,
+                    scale_lv = "fix_sample_est")
+}
+
+if(runOrRead == "read") {
+  scen_2 <- readRDS(file.path(readFolder, "scen_2.Rds"))
+}
 
 sumstat2 <- summaryStats(scen_2[["summary"]])
 longstat2 <- scen_2[["summary"]]
 ds2 <- scen_2$datasets
 
-subset(longstat2, group == 0 & type == "raw" & statistic == "est_mean") %>%
-  select(avg) %>%
-  unlist() %>%
-  sd()
-
+if(runOrRead == "run") {
+saveRDS(scen_2, file=file.path(resultsPath, "scen_2.Rds"))
+}
+  
 ### end scenario 2
+
+
+### Scenario 3
+
 
 ### scenario 3 - UMON. UDAY, UYER UIWR as linking items
 
 itms2 <- c(varsm,"UIWR")
 
+if(runOrRead == "run") {
 scen_3 <- equateSim(seed = Seed,
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -214,18 +227,32 @@ scen_3 <- equateSim(seed = Seed,
                     n_samp2 = n2,
                     save_sims = TRUE,
                     save_log = TRUE,
-                    log_file = "Logs/scenario3.txt",
+                    log_file = file.path(logPath, "scenario3.txt"),
                     verbose = FALSE, 
-                    prog_bar = TRUE)
+                    prog_bar = TRUE,
+                    scale_lv = "fix_sample_est")
+}
+
+if(runOrRead == "read") {
+  scen_3 <- readRDS(file.path(readFolder, "scen_3.Rds"))
+}
+
 sumstat3 <- summaryStats(scen_3[["summary"]])
 longstat3 <- scen_3[["summary"]]
 ds3 <- scen_3$datasets
 
+if(runOrRead == "run") {
+saveRDS(scen_3, file=file.path(resultsPath, "scen_3.Rds"))
+}
 ### end scenario 3
+
+
+### Scenario 4
+
 
 ### scenario 4 - HRS Items in both studies
 
-
+if(runOrRead == "run") {
 scen_4 <- equateSim(seed = Seed,
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -242,20 +269,34 @@ scen_4 <- equateSim(seed = Seed,
                     n_samp2 = n2,
                     save_sims = TRUE,
                     save_log = TRUE,
-                    log_file = "Logs/scenario4.txt",
+                    log_file = file.path(logPath, "scenario4.txt"),
                     verbose = FALSE, 
-                    prog_bar = TRUE)
+                    prog_bar = TRUE,
+                    scale_lv = "fix_sample_est")
+}
+
+if(runOrRead == "read") {
+  scen_4 <- readRDS(file.path(readFolder, "scen_4.Rds"))
+}
 
 sumstat4 <- summaryStats(scen_4[["summary"]])
 longstat4 <- scen_4[["summary"]]
 ds4 <- scen_4$datasets
 
+if(runOrRead == "run") {
+saveRDS(scen_4, file=file.path(resultsPath, "scen_4.Rds"))
+}
+  
 ### end scenario 4
+
+
+### Scenario 5
+
 
 ### scenario 5 - MHAS Items in both studies
 
-
-<cen_5 <- equateSim(seed = Seed,
+if(runOrRead == "run") {
+scen_5 <- equateSim(seed = Seed,
                     grp_mean = mus,
                     grp_sd = sigmas,
                     ref_grp = refGrp,
@@ -271,34 +312,36 @@ ds4 <- scen_4$datasets
                     n_samp2 = n2,
                     save_sims = TRUE,
                     save_log = TRUE,
-                    log_file = "Logs/scenario5.txt",
+                    log_file = file.path(logPath, "scenario5.txt"),
                     verbose = FALSE, 
-                    prog_bar = TRUE)
+                    prog_bar = TRUE,
+                    scale_lv = "fix_sample_est")
+}
+
+if(runOrRead == "read") {
+  scen_5 <- readRDS(file.path(readFolder, "scen_5.Rds"))
+}
 
 sumstat5 <- summaryStats(scen_5[["summary"]])
 longstat5 <- scen_5[["summary"]]
 ds5 <- scen_5$datasets
 
-#scen_5_data <- scen_5[["datasets"]]
-
+if(runOrRead == "run") {
+saveRDS(scen_5, file=file.path(resultsPath, "scen_5.Rds"))
+}
 
 ### end scenario 5
 
-# dat1 <- scen_5_data[scen_5_data$sample == 1,]
-# 
-# plot(dat1$resid ~ dat1$ability)
-# abline(lm(dat1$resid ~ dat1$ability))
-# 
-# ggplot(data=scen_5_data[scen_5_data$sample == 8,], aes(ability,resid)) + 
-#   geom_point() + geom_smooth(method = "loess")
+
+### Scenario 6
 
 
 ### scenario 6 -  UDAY as linking item
 
-
 vars6 <- vars[!vars %in% c("UMON",'UYER')]
 varsm6 <- varsm[!varsm %in% c("UMON",'UYER')]
 
+if(runOrRead == "run") {
 scen_6 <- equateSim(seed = Seed,
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -315,21 +358,35 @@ scen_6 <- equateSim(seed = Seed,
                     n_samp2 = n2,
                     save_sims = TRUE,
                     save_log = TRUE,
-                    log_file = "Logs/scenario6.txt",
+                    log_file = file.path(logPath, "scenario6.txt"),
                     verbose = FALSE, 
-                    prog_bar = TRUE)
+                    prog_bar = TRUE,
+                    scale_lv = "fix_sample_est")
+}
+
+if(runOrRead == "read") {
+  scen_6 <- readRDS(file.path(readFolder, "scen_6.Rds"))
+}
 
 sumstat6 <- summaryStats(scen_6[["summary"]])
 longstat6 <- scen_6[["summary"]]
 ds6 <- scen_6$datasets
 
+if(runOrRead == "run") {
+saveRDS(scen_6, file=file.path(resultsPath, "scen_6.Rds"))
+}
+
 ### end scenario 6
+
+
+### Scenario 7
+
 
 ### scenario 7 - UIWR as linking item, MHAS without UMON UDAY UYER
 
 varsm7 <- c(varsm[!varsm %in% c("UMON",'UYER','UDAY')],'UIWR')
 
-
+if(runOrRead == "run") {
 scen_7 <- equateSim(seed = Seed,
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -346,27 +403,35 @@ scen_7 <- equateSim(seed = Seed,
                     n_samp2 = n2,
                     save_sims = TRUE,
                     save_log = TRUE,
-                    log_file = "Logs/scenario7.txt",
+                    log_file = file.path(logPath, "scenario7.txt"),
                     verbose = FALSE, 
-                    prog_bar = TRUE)
+                    prog_bar = TRUE,
+                    scale_lv = "fix_sample_est")
+}
 
-# scen_8 <- equateSim(seed = Seed,grp_mean = mus,
-#                     grp_sd = sigmas,ref_grp = refGrp,n_rep_theta = repTheta,n_itm=length(items),
-#                     pars=hrme_par,n_rep = reps00,itms1=vars8,itms2=varsm8,fsc_method = fsMeth,
-#                     mod_res_obj=hrmecal,n_samp1 = n1,n_samp2 = n2)
+if(runOrRead == "read") {
+  scen_7 <- readRDS(file.path(readFolder, "scen_7.Rds"))
+}
 
 sumstat7 <- summaryStats(scen_7[["summary"]])
 longstat7 <- scen_7[["summary"]]
 ds7 <- scen_7$datasets
 
+if(runOrRead == "run") {
+saveRDS(scen_7, file=file.path(resultsPath, "scen_7.Rds"))
+}
 ### end scenario 7
+
+
+### Scenario 8
+
 
 ### scenario 8 - UIWR as linking item, HRS without UMON UDAY UYER
 
 vars8 <- vars[!vars %in% c("UMON",'UYER','UDAY')]
 varsm8 <- c(varsm,'UIWR')
 
-
+if(runOrRead == "run") {
 scen_8 <- equateSim(seed = Seed,
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -383,34 +448,31 @@ scen_8 <- equateSim(seed = Seed,
                     n_samp2 = n2,
                     save_sims = TRUE,
                     save_log = TRUE,
-                    log_file = "Logs/scenario8.txt",
+                    log_file = file.path(logPath, "scenario8.txt"),
                     verbose = FALSE, 
-                    prog_bar = TRUE)
+                    prog_bar = TRUE,
+                    scale_lv = "fix_sample_est")
+}
 
-# seed <- 21589
-# grp_mean <- c(0,-0.24)
-# grp_sd <- c(1,1.1)
-# ref_grp <- 1
-# n_rep_theta <- 1
-# n_itm <- length(items)
-# pars <- hrme_par
-# n_rep <- 500
-# itms1 <- vars8
-# itms2 <- varsm8
-# fsc_method <- "EAP"
-# mod_res_obj <- hrmecal
-# n_samp1 <- 500
-# n_samp2 <- 500
-
-# scen_8 <- equateSim(seed = Seed,grp_mean=c(mean_hrs,mean_mhas),
-#                     grp_sd = sigmas,n_samp=500,n_rep_theta = repTheta,n_itm=length(items),
-#                     pars=hrme_par,n_rep = reps00,itms1=vars8,itms2=varsm8,fsc_method = fsMeth,
-#                     mod_res_obj=hrmecal)
+if(runOrRead == "read") {
+  scen_8 <- readRDS(file.path(readFolder, "scen_8.Rds"))
+}
 
 sumstat8 <- summaryStats(scen_8[["summary"]])
 longstat8 <- scen_8[["summary"]]
 ds8 <- scen_8$datasets
 
+if(runOrRead == "run") {
+saveRDS(scen_8, file=file.path(resultsPath, "scen_8.Rds"))
+}
+### end scenario 8
+
+
+### Scenario 9
+
+
+
+if(runOrRead == "run") {
 scen_9 <- equateSim(seed = Seed, 
                     grp_mean = mus,
                     grp_sd = sigmas,
@@ -419,151 +481,173 @@ scen_9 <- equateSim(seed = Seed,
                     #n_itm=length(items),
                     pars=hrme_par,
                     n_rep = reps,
-                    itms1=items,
-                    itms2=items,
+                    itms1=vars,
+                    itms2=varsm,
                     fsc_method = fsMeth,
                     mod_res_obj=hrmecal,
                     n_samp1 = n1,
                     n_samp2 = n2,
                     save_sims = TRUE,
                     save_log = TRUE,
-                    log_file = "Logs/scenario9.txt",
+                    log_file = file.path(logPath, "scenario9.txt"),
                     verbose = FALSE, 
                     prog_bar = TRUE,
+                    scale_lv = "fix_sample_est",
                     man_override = list(iname = c("UDAY", "UMON"),
                                         parameter = c("b", "b"), 
                                         val = c(0, 1.928)))
+}
+
+if(runOrRead == "read") {
+  scen_9 <- readRDS(file.path(readFolder, "scen_9.Rds"))
+}
 
 sumstat9 <- summaryStats(scen_9[["summary"]])
 longstat9 <- scen_9[["summary"]]
 ds9 <- scen_9$datasets
 
+if(runOrRead == "run") {
+saveRDS(scen_9, file=file.path(resultsPath, "scen_9.Rds"))
+}
+### end scenario 9
 
+
+### Scenario 10
+
+
+
+if(runOrRead == "run") {
+scen_10 <- equateSim(seed = Seed, 
+                    grp_mean = mus,
+                    grp_sd = sigmas,
+                    ref_grp = refGrp,
+                    n_rep_theta = repTheta,
+                    #n_itm=length(items),
+                    pars=hrme_par,
+                    n_rep = reps,
+                    itms1=vars,
+                    itms2=varsm,
+                    fsc_method = fsMeth,
+                    mod_res_obj=hrmecal,
+                    n_samp1 = n1,
+                    n_samp2 = n2,
+                    save_sims = TRUE,
+                    save_log = TRUE,
+                    log_file = file.path(logPath, "scenario10.txt"),
+                    verbose = FALSE, 
+                    prog_bar = TRUE,
+                    scale_lv = "fix_sample_est",
+                    man_override = list(iname = c("UDAY", "UMON", "UDAY", "UMON", "UYER"),
+                                        parameter = c("b", "b", "a1", "a1", "a1"), 
+                                        val = c(0, 1.928, 4, 4, 4)))
+}
+
+if(runOrRead == "read") {
+  scen_10 <- readRDS(file.path(readFolder, "scen_10.Rds"))
+}
+
+sumstat10 <- summaryStats(scen_10[["summary"]])
+longstat10 <- scen_10[["summary"]]
+ds10 <- scen_10$datasets
+
+if(runOrRead == "run") {
+saveRDS(scen_10, file=file.path(resultsPath, "scen_10.Rds"))
+}
+### end scenario 10
+
+
+nscen <- sum(str_detect(ls(), "^scen_[0-9]"))
 
 ### Merge summary statistics from scenarios
 
-sumstat1$scenario <- 1
-sumstat2$scenario <- 2
-sumstat3$scenario <- 3
-sumstat4$scenario <- 4
-sumstat5$scenario <- 5
-sumstat6$scenario <- 6
+if(nscen > 0){
+for(ns in 1:nscen){
+  temp <- dynGet(paste0("sumstat", ns))
+  temp$scenario <- ns
+  assign(paste0("sumstat", ns), temp)
+  
+  temp <- dynGet(paste0("longstat", ns))
+  temp$scenario <- ns
+  assign(paste0("longstat", ns), temp)
+  
+  temp <- dynGet(paste0("ds", ns))
+  temp$scenario <- ns
+  assign(paste0("ds", ns), temp)
+}
+}
 
-# sumstat <- rbind(sumstat1,sumstat2,sumstat3,sumstat4,sumstat5,sumstat6)
-# sumstat$scenario_label <- ifelse(sumstat$scenario == 1,"HRS+MHAS_all_shared",
-#                                  ifelse(sumstat$scenario == 2,"HRS+MHAS_UMON_UDAY_UYER_shared",
-#                                         ifelse(sumstat$scenario == 3,"HRS+MHAS_UMON_UDAY_UYER_UIWR_shared",
-#                                                ifelse(sumstat$scenario == 4,"HRS_all_shared",
-#                                                       ifelse(sumstat$scenario == 5,"MHAS_all_shared",
-#                                                              ifelse(sumstat$scenario == 6,"HRS+HMAS_UDAY_shared",
-#                                                                     ifelse(sumstat$scenario == 7,"HRS+MHAS_UIWR_shared_no_MHAS_dates",
-#                                                                            ifelse(sumstat$scenario == 7,"HRS+MHAS_UIWR_shared_no_HRS_dates",
-#                                                                                   NA))))))))
+longstat <- lapply(paste0("longstat", 1:nscen), dynGet) %>%
+  do.call(bind_rows, .)
 
-#load("Results/simulation_results_2020-01-07-18-28.RData")
+dsAll <- lapply(paste0("ds", 1:nscen), dynGet) %>%
+  do.call(bind_rows, .)
 
-sumstat7$scenario <- 7
-sumstat8$scenario <- 8
-sumstat9$scenario <- 9
-#sumstat10$scenario <- 10
+sumstat <- lapply(paste0("sumstat", 1:nscen), dynGet) %>%
+  do.call(bind_rows, .)
 
-longstat1$scenario <- 1
-longstat2$scenario <- 2
-longstat3$scenario <- 3
-longstat4$scenario <- 4
-longstat5$scenario <- 5
-longstat6$scenario <- 6
-longstat7$scenario <- 7
-longstat8$scenario <- 8
-longstat9$scenario <- 9
-#longstat10$scenario <- 10
+scenLabs <- c(
+  "HRS+MHAS_all_shared",
+  "HRS+MHAS_UMON_UDAY_UYER_shared",
+  "HRS+MHAS_UMON_UDAY_UYER_UIWR_shared",
+  "HRS_all_shared",
+  "MHAS_all_shared",
+  "HRS+HMAS_UDAY_shared",
+  "HRS+MHAS_UIWR_shared_no_MHAS_dates",
+  "HRS+MHAS_UIWR_shared_no_HRS_dates",
+  "HRS+MHAS_UMON(b=1.928)_UDAY(b=0)_UYER(b=-1.928)_shared",
+  "HRS+MHAS_UMON(b=1.928,a1=4)_UDAY(b=0,a1=4)_UYER(b=-1.928,a1=4)_shared"
+)
 
-longstat <- bind_rows(longstat1,
-                      longstat2,
-                      longstat3,
-                      longstat4,
-                      longstat5,
-                      longstat6,
-                      longstat7,
-                      longstat8,
-                      longstat9
-                      #,longstat10
-                      )
-
-ds1$scenario <- 1
-ds2$scenario <- 2
-ds3$scenario <- 3
-ds4$scenario <- 4
-ds5$scenario <- 5
-ds6$scenario <- 6
-ds7$scenario <- 7
-ds8$scenario <- 8
-ds9$scenario <- 9
-#ds10$scenario <- 10
-
-dsAll <- bind_rows(ds1, ds2, ds3, ds4, ds5, ds6, ds7, ds8, ds9
-                   #, ds10
-                   )
-
-# sumstat7 <- rbind(sumstat7,sumstat8)
-# sumstat7$scenario_label <- ifelse(sumstat7$scenario == 1,"HRS+MHAS_all_shared",
-#                                   ifelse(sumstat7$scenario == 2,"HRS+MHAS_UMON_UDAY_UYER_shared",
-#                                          ifelse(sumstat7$scenario == 3,"HRS+MHAS_UMON_UDAY_UYER_UIWR_shared",
-#                                                 ifelse(sumstat7$scenario == 4,"HRS_all_shared",
-#                                                        ifelse(sumstat7$scenario == 5,"MHAS_all_shared",
-#                                                               ifelse(sumstat7$scenario == 6,"HRS+HMAS_UDAY_shared",
-#                                                                      ifelse(sumstat7$scenario == 7,"HRS+MHAS_UIWR_shared_no_MHAS_dates",
-#                                                                             ifelse(sumstat7$scenario == 8,"HRS+MHAS_UIWR_shared_no_HRS_dates",
-#                                                                                    NA))))))))
-
-# sumstat <- rbind(sumstat,sumstat7)
-sumstat <- rbind(sumstat1,sumstat2,sumstat3,sumstat4,sumstat5,sumstat6, sumstat7, sumstat8, sumstat9
-                 #, sumstat10
-                 )
 sumstat$scenario_label <- factor(sumstat$scenario, 
-                                 levels = 1:9, 
-                                 labels = c("HRS+MHAS_all_shared",
-                                            "HRS+MHAS_UMON_UDAY_UYER_shared",
-                                            "HRS+MHAS_UMON_UDAY_UYER_UIWR_shared",
-                                            "HRS_all_shared", 
-                                            "MHAS_all_shared",
-                                            "HRS+HMAS_UDAY_shared",
-                                            "HRS+MHAS_UIWR_shared_no_MHAS_dates",
-                                            "HRS+MHAS_UIWR_shared_no_HRS_dates",
-                                            "HRS+MHAS_UMON(b=1.928)_UDAY(b=0)_UYER(b=-1.928)_shared"))
+                                 levels = 1:nscen, 
+                                 labels = scenLabs[1:nscen])
 
-#save(sumstat,mean_sd,file=paste0("Results/simulation_results_",format(Sys.time(), '%Y-%m-%d-%H-%M'),".RData"))
-saveRDS(sumstat,file=paste0("Results/sumstat_",format(Sys.time(), '%Y-%m-%d-%H-%M'),".rds"))
+if(runOrRead == "run") {
+saveRDS(sumstat,file=file.path(resultsPath, paste0("sumstat_", outFolderName, ".rds")))
 #sumstat <- readRDS("Results/sumstat_2020-07-08-18-13.rds")
 
-save(file=paste0("Results/simulation_results_",format(Sys.time(), '%Y-%m-%d-%H-%M'),".RData"))
-#load()
+save(list = ls(all.names = TRUE),
+     file=file.path(resultsPath, paste0("simulation_results_", outFolderName, ".RData")),
+     envir = environment())
+#load("Output/2020-08-06_09-04-AM/Results/simulation_results_2020-08-06_09-04-AM.RData")
 
+write.csv(sumstat, file=file.path(resultsPath, paste0("sumstat", outFolderName, ".csv")))
+}
 
-DT::datatable(sumstat, options = list(pageLength = 30), rownames = FALSE) %>%
-  formatRound(columns = names(sumstat), digits = 3) %>%
-  formatRound(columns = "scenario", digits = 0)
+if(runOrRead == "read") {
+  #sumstat <- readRDS(file.path(readFolder, paste0("sumstat_", str_sub(readFolder, 8, -9), ".Rds")))
+  write.csv(sumstat, file=file.path(resultsPath, paste0("sumstat", outFolderName, ".csv")))
+}
+                    
+### Compile results                    
+                    
+DT::datatable(sumstat, options = list(pageLength = 3*nscen), rownames = FALSE) %>%
+  formatRound(columns = names(sumstat)[-c(1, ncol(sumstat))], digits = 3) %>%
+  formatRound(columns = c("n_rep", "scenario"), digits = 0)
+
 
 read_docx() %>%  # a new, empty document
   body_add_table(sumstat %>% 
                    mutate_if(is.numeric, round, 3) %>%
-                   dplyr::select(scenario, mean, sd, bias, ese, rmse, r_theta_est, mean_st, sd_st, bias_st, ese_st, rmse_st) %>%
+                   dplyr::select(scenario, mean, sd, bias, bias_pct, ese, rmse, r_theta_est) %>%
                    filter(group == "Combined"), style = "table_template") %>% 
-  print(target="Results/Table3.docx")
+  print(target=file.path(resultsPath, "Table3.docx"))
 
 read_docx() %>%  # a new, empty document
   body_add_table(sumstat %>% 
                    mutate_if(is.numeric, round, 3) %>%
-                   dplyr::select(scenario, mean, sd, bias, ese, rmse, r_theta_est, mean_st, sd_st, bias_st, ese_st, rmse_st) %>%
+                   dplyr::select(scenario, mean, sd, bias, bias_pct, ese, rmse, r_theta_est) %>%
                    filter(group == "Group 1"), style = "table_template") %>% 
-  print(target="Results/Table4.docx")
+  print(target=file.path(resultsPath, "Table4.docx"))
 
 read_docx() %>%  # a new, empty document
   body_add_table(sumstat %>% 
                    mutate_if(is.numeric, round, 3) %>%
-                   dplyr::select(scenario, mean, sd, bias, ese, rmse, r_theta_est, mean_st, sd_st, bias_st, ese_st, rmse_st) %>%
+                   dplyr::select(scenario, mean, sd, bias, bias_pct, ese, rmse, r_theta_est) %>%
                    filter(group == "Group 2"), style = "table_template") %>% 
-  print(target="Results/Table5.docx")
+  print(target=file.path(resultsPath, "Table5.docx"))
+
+# Plot scenarios
 
 # Plot scenarios
 
@@ -575,7 +659,7 @@ sumlong <- sumstat %>%
   mutate_at(vars(stat), replace_na, "us") %>%
   mutate(low95 = mean - qnorm(.975)*sd/sqrt(n_rep),
          up95 = mean + qnorm(.975)*sd/sqrt(n_rep)) %>%
-  mutate(scenF = factor(scenario, levels = 1:9, labels = paste0("Scenario ", 1:9))) %>%
+  mutate(scenF = factor(scenario, levels = 1:nscen, labels = paste0("Scenario ", 1:nscen))) %>%
   mutate(Group = factor(group, levels = c("Combined", "Group 1", "Group 2"))) %>%
   mutate(stat = factor(stat, levels = c("us", "st"),
                        labels = c("Unstandardized", "Standardized"))) %>%
@@ -608,41 +692,14 @@ if(!exists("geom_flat_violin")) {
   source("https://gist.githubusercontent.com/benmarwick/2a1bb0133ff568cbe28d/raw/fb53bd97121f7f9ce947837ef1a4c65a73bffb3f/geom_flat_violin.R")
 }
 
+s1cols <- brewer.pal(9, "Set1")
+s1cols <- c(s1cols, "#232654")
+
 for(s in unique(longstat$type)){
-  longstat %>%
+  rcp <- longstat %>%
     filter(type == s) %>%
     filter(statistic == "est_mean") %>%
-    filter(group != 1) %>%
-    mutate(scenF = factor(scenario, levels = 1:9, labels = paste0("Scenario ", 1:9))) %>%
-    mutate(Group = factor(group, levels = c(0, 2), labels = c("Combined", "Group 2"))) %>%
-    ggplot(aes(x = fct_rev(scenF), y = avg, fill = scenF)) +
-    geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8, scale = "width") +
-    geom_point(aes(y = avg, color = scenF), 
-               position = position_jitter(width = .15), 
-               size = .5, alpha = 0.8) +
-    geom_boxplot(width = .1, outlier.shape = NA, alpha = 0.85, fill = "white", notch = TRUE) +
-    ylab("Mean Ability") +
-    guides(fill = FALSE) +
-    guides(color = FALSE) +
-    coord_flip() +
-    expand_limits(x = max(longstat$scenario) + 1) +
-    xlab("") +
-    facet_wrap(~Group, ncol = 2) +
-    scale_colour_brewer(name = "Scenario", palette = "Set1") +
-    scale_fill_brewer(name = "Scenario", palette = "Set1") +
-    geom_hline(data = thetalines2, aes(yintercept = value), 
-               lty = 2) +
-    theme_few() + 
-    theme(panel.background = element_rect(fill = "gray85"),
-          axis.text.x = element_text(size = 6))
-  
-  ggsave(paste0("Plots/Figure_", s, "_2a.tiff"), width = 6.5, height = 4.5) # High quality for submission
-  ggsave(paste0("Plots/Figure_", s, "_2a.png"), width = 6.5, height = 4.5) # For Word doc
-  
-  longstat %>%
-    filter(type == s) %>%
-    filter(statistic == "est_mean") %>%
-    mutate(scenF = factor(scenario, levels = 1:9, labels = paste0("Scenario ", 1:9))) %>%
+    mutate(scenF = factor(scenario, levels = 1:nscen, labels = paste0("Scenario ", 1:nscen))) %>%
     mutate(Group = factor(group, levels = 0:2, labels = c("Combined", "Group 1", "Group 2"))) %>%
     ggplot(aes(x = fct_rev(scenF), y = avg, fill = scenF)) +
     geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8, scale = "width") +
@@ -657,71 +714,20 @@ for(s in unique(longstat$type)){
     expand_limits(x = max(longstat$scenario) + 1) +
     xlab("") +
     facet_wrap(~Group, ncol = 3) +
-    scale_colour_brewer(name = "Scenario", palette = "Set1") +
-    scale_fill_brewer(name = "Scenario", palette = "Set1") +
+    scale_colour_manual(name = "Scenario", values = s1cols) + 
+    scale_fill_manual(name = "Scenario", values = s1cols) + 
+    #scale_colour_brewer(name = "Scenario", palette = "Set3") +
+    #scale_fill_brewer(name = "Scenario", palette = "Set3") +
     geom_hline(data = thetalines3, aes(yintercept = value), 
                lty = 2) +
     theme_few() + 
     theme(panel.background = element_rect(fill = "gray85"),
           axis.text.x = element_text(size = 6))
   
-  ggsave(paste0("Plots/Figure_", s, "_3a.tiff"), width = 6.5, height = 4.5) # High quality for submission
-  ggsave(paste0("Plots/Figure_", s, "_3a.png"), width = 6.5, height = 4.5) # For Word doc
+  ggsave(file.path(plotPath, paste0("Figure_", s, ".tiff")), width = 6.5, height = 4.5) # High quality for submission
+  ggsave(file.path(plotPath, paste0("Figure_", s, ".png")), width = 6.5, height = 4.5) # For Word doc
   
-  longstat %>%
-    filter(type == s) %>%
-    filter(statistic == "est_mean") %>%
-    filter(group != 1) %>%
-    mutate(scenF = factor(scenario, levels = 1:9, labels = paste0("Scenario ", 1:9))) %>%
-    mutate(Group = factor(group, levels = c(0, 2), labels = c("Combined", "Group 2"))) %>%
-    ggplot(aes(x = fct_rev(scenF), y = avg, fill = scenF)) +
-    geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8, scale = "width") +
-    geom_point(aes(y = avg, color = scenF), 
-               position = position_jitter(width = .15), 
-               size = .5, alpha = 0.8) +
-    geom_boxplot(width = .1, outlier.shape = NA, alpha = 0.85, fill = "white", notch = TRUE) +
-    ylab("Mean Ability") +
-    guides(fill = FALSE) +
-    guides(color = FALSE) +
-    coord_flip() +
-    expand_limits(x = max(longstat$scenario) + 1) +
-    xlab("") +
-    facet_wrap(~Group, ncol = 2) +
-    scale_colour_brewer(name = "Scenario", palette = "Set1") +
-    scale_fill_brewer(name = "Scenario", palette = "Set1") +
-    theme_few() + 
-    theme(panel.background = element_rect(fill = "gray85"),
-          axis.text.x = element_text(size = 6))
-  
-  ggsave(paste0("Plots/Figure_", s, "_2b.tiff"), width = 6.5, height = 4.5) # High quality for submission
-  ggsave(paste0("Plots/Figure_", s, "_2b.png"), width = 6.5, height = 4.5) # For Word doc
-  
-  longstat %>%
-    filter(type == s) %>%
-    filter(statistic == "est_mean") %>%
-    mutate(scenF = factor(scenario, levels = unique(longstat$scenario), labels = paste0("Scenario ", unique(longstat$scenario)))) %>%
-    mutate(Group = factor(group, levels = 0:2, labels = c("Combined", "Group 1", "Group 2"))) %>%
-    ggplot(aes(x = fct_rev(scenF), y = avg, fill = scenF)) +
-    geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8, scale = "width") +
-    geom_point(aes(y = avg, color = scenF), 
-               position = position_jitter(width = .15), 
-               size = .5, alpha = 0.8) +
-    geom_boxplot(width = .1, outlier.shape = NA, alpha = 0.85, fill = "white", notch = TRUE) +
-    ylab("Mean Ability") +
-    guides(fill = FALSE) +
-    guides(color = FALSE) +
-    coord_flip() +
-    expand_limits(x = max(longstat$scenario) + 1) +
-    xlab("") +
-    facet_wrap(~Group, ncol = 3) +
-    scale_colour_brewer(name = "Scenario", palette = "Set1") +
-    scale_fill_brewer(name = "Scenario", palette = "Set1") +
-    theme_few() + 
-    theme(panel.background = element_rect(fill = "gray85"),
-          axis.text.x = element_text(size = 6))
-  
-  ggsave(paste0("Plots/Figure_", s, "_3b.tiff"), width = 6.5, height = 4.5) # High quality for submission
-  ggsave(paste0("Plots/Figure_", s, "_3b.png"), width = 6.5, height = 4.5) # For Word doc
+
 }
 
 ## Bland-Altman Plots
@@ -729,8 +735,8 @@ for(s in unique(longstat$type)){
 nPoints <- 500
 
 set.seed(48293)
-dsAll %>%
-  mutate(Scenario = factor(scenario, levels = 1:9, labels = paste0("Scenario ", 1:9))) %>%
+ba1 <- dsAll %>%
+  mutate(Scenario = factor(scenario, levels = 1:nscen, labels = paste0("Scenario ", 1:nscen))) %>%
   group_by(scenario) %>%
   sample_n(nPoints) %>%
   ggplot(aes(x = ability, y = resid, colour = factor(group), shape = factor(group))) +
@@ -745,12 +751,12 @@ dsAll %>%
   theme_few() + 
   theme(panel.background = element_rect(fill = "#f7f7f7"))
 
-ggsave("Plots/BlandAltman_us.png", width = 6.5, height = 4.5) # For Word doc
-ggsave("Plots/BlandAltman_us.tiff", width = 6.5, height = 4.5) # High quality for submission
+ggsave(file.path(plotPath, "BlandAltman_us.png"), width = 6.5, height = 4.5) # For Word doc
+ggsave(file.path(plotPath, "BlandAltman_us.tiff"), width = 6.5, height = 4.5) # High quality for submission
 
 set.seed(48293)
-dsAll %>%
-  mutate(Scenario = factor(scenario, levels = 1:9, labels = paste0("Scenario ", 1:9))) %>%
+ba2 <- dsAll %>%
+  mutate(Scenario = factor(scenario, levels = 1:nscen, labels = paste0("Scenario ", 1:nscen))) %>%
   group_by(scenario) %>%
   sample_n(nPoints) %>%
   ggplot(aes(x = ability, y = resid_st, colour = factor(group), shape = factor(group))) +
@@ -765,8 +771,8 @@ dsAll %>%
   theme_few() + 
   theme(panel.background = element_rect(fill = "#f7f7f7"))
 
-ggsave("Plots/BlandAltman_st.png", width = 6.5, height = 4.5) # For Word doc
-ggsave("Plots/BlandAltman_st.tiff", width = 6.5, height = 4.5) # High quality for submission
+ggsave(file.path(plotPath, "BlandAltman_st.png"), width = 6.5, height = 4.5) # For Word doc
+ggsave(file.path(plotPath, "BlandAltman_st.tiff"), width = 6.5, height = 4.5) # High quality for submission
 
 badat <- dsAll %>% 
   mutate(w30 = ifelse(resid < .30, 1, 0),
