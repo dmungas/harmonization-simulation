@@ -1,18 +1,36 @@
-library(tidyverse)
-require(readr)
-require(MplusAutomation)
-require(mirt)
-require(tidyr)
-require(ggplot2)
-require(lubridate)
-library(DT)
-library(RColorBrewer)
-library(ggthemes)
-library(officer)
+library(pacman)
+p_load(tidyverse, pander, readr, mirt, tidyr, ggplot2, lubridate, 
+       DT, RColorBrewer, ggthemes, officer, knitr, knitrProgressBar,
+       stringr)
 #source("~/Research/Code/runMplus.R")
 #source("~/Research/Code/extractVarNames.R")
-source("Code/simulation_functions.R")
+#source("Code/simulation_functions.R")
 
+if(!dir.exists("Output")) {
+  dir.create("Output")
+}
+outFolderName <- format(Sys.time(), "%Y-%m-%d_%H-%M")
+outPath <- file.path("Output", outFolderName)
+dir.create(outPath)
+logPath <- file.path(outPath, "Logs")
+dir.create(logPath)
+plotPath <- file.path(outPath, "Plots")
+dir.create(plotPath)
+resultsPath <- file.path(outPath, "Results")
+dir.create(resultsPath)
+
+runOrRead <- "run" # If "read", reads in old files. If "run," generates new simulations.
+#readFolder <- "Output/2020-10-05_11-00-AM/Results"
+
+Seed <- 21589
+mus <- c(0, -0.24)
+#sigmas <- c(sd_hrs, sd_mhas) # set below (after calibration)
+refGrp <- 1
+repTheta <- 1
+reps <- 500
+fsMeth <- "EAP"
+n1 <- 500
+n2 <- 500
 
 # *********************** mirt calibration of PITCH TICS ***********************
 
@@ -115,7 +133,8 @@ row.names(mean_sd) <- c("Group 1","Group 2","Combined")
 
 # ----------------------------end mirt calibration -----------------------------
 
-
+sigmas <- c(sd_hrs, sd_mhas)
+                                        
 # *************************** Simulation Scenarios *****************************
 
 ### scenario 1 - all items shared
@@ -562,29 +581,38 @@ nscen <- sum(str_detect(ls(), "^scen_[0-9]"))
 
 if(nscen > 0){
 for(ns in 1:nscen){
-  temp <- dynGet(paste0("sumstat", ns))
+  #temp <- dynGet(paste0("sumstat", ns)) # dynGet works when knitting
+  temp <- get(paste0("sumstat", ns))
   temp$scenario <- ns
   assign(paste0("sumstat", ns), temp)
   
-  temp <- dynGet(paste0("longstat", ns))
+  #temp <- dynGet(paste0("longstat", ns)) # dynGet works when knitting
+  temp <- get(paste0("longstat", ns))
   temp$scenario <- ns
   assign(paste0("longstat", ns), temp)
   
-  temp <- dynGet(paste0("ds", ns))
+  #temp <- dynGet(paste0("ds", ns)) # dynGet works when knitting
+  temp <- get(paste0("ds", ns))
   temp$scenario <- ns
   assign(paste0("ds", ns), temp)
 }
 }
 
-longstat <- lapply(paste0("longstat", 1:nscen), dynGet) %>%
-  do.call(bind_rows, .)
+# longstat <- lapply(paste0("longstat", 1:nscen), dynGet) %>%  # dynGet works when knitting
+#  do.call(bind_rows, .)
+longstat <- lapply(paste0("longstat", 1:nscen), get) %>%
+  do.call(bind_rows, .)                    
 
-dsAll <- lapply(paste0("ds", 1:nscen), dynGet) %>%
+# dsAll <- lapply(paste0("ds", 1:nscen), dynGet) %>%  # dynGet works when knitting
+#  do.call(bind_rows, .)
+dsAll <- lapply(paste0("ds", 1:nscen), get) %>%
   do.call(bind_rows, .)
-
-sumstat <- lapply(paste0("sumstat", 1:nscen), dynGet) %>%
+                    
+# sumstat <- lapply(paste0("sumstat", 1:nscen), dynGet) %>% # dynGet works when knitting
+#  do.call(bind_rows, .)
+sumstat <- lapply(paste0("sumstat", 1:nscen), get) %>%
   do.call(bind_rows, .)
-
+                    
 scenLabs <- c(
   "HRS+MHAS_all_shared",
   "HRS+MHAS_UMON_UDAY_UYER_shared",
@@ -646,8 +674,6 @@ read_docx() %>%  # a new, empty document
                    dplyr::select(scenario, mean, sd, bias, bias_pct, ese, rmse, r_theta_est) %>%
                    filter(group == "Group 2"), style = "table_template") %>% 
   print(target=file.path(resultsPath, "Table5.docx"))
-
-# Plot scenarios
 
 # Plot scenarios
 
