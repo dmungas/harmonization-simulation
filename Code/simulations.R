@@ -1,6 +1,6 @@
 library(pacman)
 p_load(tidyverse, pander, readr, mirt, tidyr, ggplot2, lubridate, 
-       DT, RColorBrewer, ggthemes, officer, knitr, knitrProgressBar,
+       DT, RColorBrewer, ggthemes, officer, knitr, progress,
        stringr)
 #source("~/Research/Code/runMplus.R")
 #source("~/Research/Code/extractVarNames.R")
