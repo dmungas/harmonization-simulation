@@ -138,13 +138,13 @@ equateSim <- function(seed = NULL,
       )
       save_log <- TRUE
     }
-    # pb <- progress_bar$new(
-    #   format = "  Simulating data [:bar] :current of :total (:percent) elapsed: :elapsed eta: :eta",
-    #   total = n_rep,
-    #   clear = FALSE,
-    #   width = 80
-    # )
-    pb <- knitrProgressBar::progress_estimated(n_rep)
+     pb <- progress_bar$new(
+       format = "  Simulating data [:bar] :current of :total (:percent) elapsed: :elapsed eta: :eta",
+       total = n_rep,
+       clear = FALSE,
+       width = 80
+     )
+    #pb <- knitrProgressBar::progress_estimated(n_rep)
   }
   ### End initialize display settings
   
@@ -812,7 +812,8 @@ equateSim <- function(seed = NULL,
           )
         }
         if (prog_bar)
-          pb$tick()$print()
+          #pb$tick()$print()
+          pb$tick()
       }
     } # end while j
     if (n_rep_theta == 1) {
