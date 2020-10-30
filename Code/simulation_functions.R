@@ -76,6 +76,7 @@ extractDiffMatrix <- function(pars) {
 #         man_override = list(iname = c("UDAY", "UMON"),
 #                           parameter = c("b", "b"),
 #                           val = c(0, 1.928))
+#     The man_override command currently only works for dichotomous items.
 #   std_sample - option to standardize the harmonized factor scores with scaling based on the empirical sample data (default = FALSE, which uses population-based scaling)
 #   std_ref - if std_sample = TRUE, this sets the reference group for scaling of the standardized factor scores.
 #       Options are:
@@ -83,6 +84,11 @@ extractDiffMatrix <- function(pars) {
 #           1 for group 1
 #           2 for group 2
 #           NULL (default)
+# scale_lv - how to scale the factor scores derived from the latent trait (default: "fix_sample_est")
+#       Options are:
+#         "fix_sample_est": for each simulated data set, the scale of the harmonized factor scores is fixed to the M & SD as estimated in the combined sample
+#         "fix_N01": for each simulated data set, the scale of the harmonized factor scores is fixed to M = 0, SD = 1
+#         "free": for each simulated data set, the scale of the harmonized factor score is freely estimated (not fixed when factor scores are generated)
 
 # equateSim returns a list with 2 elements:
 # 1. "summary" - a dataframe that has summary statistics (rmse, mean
@@ -111,14 +117,17 @@ equateSim <- function(seed = NULL,
                       save_sims = FALSE,
                       verbose = FALSE,
                       save_log = TRUE,
-                      log_file = paste0("technical_output_log_",
-                                        format(Sys.time(), "%Y-%m-%d_%I-%M-%p"),
+                      log_file = paste0(outPath, "/Logs/technical_output_log_",
+                                        outFolderName,
                                         ".txt"),
                       prog_bar = TRUE,
                       rel = TRUE,
                       man_override = NULL,
                       std_sample = FALSE,
-                      std_ref = NULL) {
+                      std_ref = NULL,
+                      scale_lv = c("fix_sample_est", "fix_N01", "free")) {
+  
+  simBegin <- Sys.time()
   
   ### Begin initialize display settings
   if (prog_bar) {
@@ -129,12 +138,13 @@ equateSim <- function(seed = NULL,
       )
       save_log <- TRUE
     }
-    pb <- progress_bar$new(
-      format = "  Simulating data [:bar] :current of :total (:percent) elapsed: :elapsed eta: :eta",
-      total = n_rep,
-      clear = FALSE,
-      width = 80
-    )
+    # pb <- progress_bar$new(
+    #   format = "  Simulating data [:bar] :current of :total (:percent) elapsed: :elapsed eta: :eta",
+    #   total = n_rep,
+    #   clear = FALSE,
+    #   width = 80
+    # )
+    pb <- knitrProgressBar::progress_estimated(n_rep)
   }
   ### End initialize display settings
   
@@ -169,6 +179,7 @@ equateSim <- function(seed = NULL,
         "Error: Incorrectly specified reference group. ref_grp should be 0 for no reference group, 1 for group 1, or 2 for group 2."
       )
       sink()
+      stop()
     }
     stop(
       "Incorrectly specified reference group. ref_grp should be 0 for no reference group, 1 for group 1, or 2 for group 2."
@@ -192,13 +203,25 @@ equateSim <- function(seed = NULL,
     # If manual override is requested, this checks to see whether user-inputted data
     # is in the form of difficulty (b) parameters.
     # If so, this converts them to easiness (d) parameters for use in mirt
-    # The conversion formula used is d = b/-a
+    # The conversion formula used is d = b*-a
     if (!is.null(man_override)) {
       for (p in 1:length(man_override$iname)) {
         # Convert b to d
         if (str_detect(man_override$parameter[p], "b")) {
           man_override$parameter[p] <- gsub("b", "d", man_override$parameter[p])
-          man_override$val[p] <- man_override$val[p] / -coef(mod_res_obj)[[man_override$iname[p]]][1]
+          if ("a1" %in% man_override$parameter[man_override$iname == man_override$iname[p]] & "d" %in% man_override$parameter[man_override$iname == man_override$iname[p]]) {
+            man_override$val[p] <- traditional2mirt(x = c(a = man_override$val[man_override$parameter == "a1" & man_override$iname == man_override$iname[p]],
+                                                    b = man_override$val[p]),
+                                                  cls = 'graded',
+                                                  ncat = 2)[2]
+          } else {
+            man_override$val[p] <- traditional2mirt(x = c(a = coef(mod_res_obj)[[man_override$iname[p]]][1],
+                                                    b = man_override$val[p]),
+                                                  cls = 'graded',
+                                                  ncat = 2)[2]
+          #man_override$val[p] <- man_override$val[p] * -coef(mod_res_obj)[[man_override$iname[p]]][1]
+
+          }
         }
       }
     }
@@ -297,7 +320,6 @@ equateSim <- function(seed = NULL,
           } else {
             ds2[ds2$group == 2, !names(ds2) %in% c("theta1", "group", itms2)] <- NA
           }
-
         }
         ds[[i]] <- ds2
       }
@@ -536,16 +558,33 @@ equateSim <- function(seed = NULL,
                 cols = -item,
                 names_to = "name",
                 values_to = "value",
-                values_drop_na = TRUE
-              )
+                values_drop_na = TRUE)
             pars3 <- pars1
             pars3$value[1:nrow(mcal_pars)] <- mcal_pars$value
-            pars3$value[pars3$name == "MEAN_1"] <-
-              0 #coef(mcal)$GroupPars[1]
-            # third option - free estimates of M & SD
-            pars3$value[pars3$name == "COV_11"] <-
-              1 #coef(mcal)$GroupPars[2]
             pars3$est <- FALSE
+            
+            if(length(scale_lv) > 1) {
+              scale_lv <- scale_lv[1]
+            }
+            
+            if(scale_lv == "fix_sample_est"){
+              ## First option: fix M & SD to sample-estimated values
+              pars3$value[pars3$name == "MEAN_1"] <- coef(mcal)$GroupPars[1]
+              pars3$value[pars3$name == "COV_11"] <- coef(mcal)$GroupPars[2]
+            }
+            
+            
+            if(scale_lv == "fix_N01"){
+              ## Second option: fix M & SD to population values (M = 0, SD = 1)
+              pars3$value[pars3$name == "MEAN_1"] <- 0
+              pars3$value[pars3$name == "COV_11"] <- 1
+            }
+            
+            if(scale_lv == "free"){
+              ## Third option: freely estimate M & SD
+              pars3$est[pars3$name == "MEAN_1"] <- TRUE
+              pars3$est[pars3$name == "COV_11"] <- TRUE
+            }
             
             fcmod <-
               mirt(
@@ -773,7 +812,7 @@ equateSim <- function(seed = NULL,
           )
         }
         if (prog_bar)
-          pb$tick()
+          pb$tick()$print()
       }
     } # end while j
     if (n_rep_theta == 1) {
@@ -798,9 +837,13 @@ equateSim <- function(seed = NULL,
       sim_results[["datasets"]] <- sim_data[, c(vnms, itnms)]
     }
     if (save_log)
+      simEnd <- Sys.time()
+      runTime <- simEnd - simBegin
+      cat("\n\n Total time to run scenario:", runTime)
       sink()
     return(sim_results)
   }
+  closeAllConnections()
 }
 
 # infoSim is a function that uses R mirt item response theory (IRT) methods
@@ -967,22 +1010,28 @@ summaryStats <- function(df) {
   sumout <- sumout[c(2, 3, 1), ]
   
   # Calculate relative bias in the unstandardized grand means.
-  # Constant of 1 added for Group 1, whose population mean is 0.
   sumout$bias <- NA
+  sumout$bias_pct <- NA
+  
   for (i in 1:nrow(sumout)) {
-    constant <- ifelse(sumout$theta[i] == 0, 1, 0)
     sumout$bias[i] <-
-      ((sumout$mean[i] + constant) - (sumout$theta[i] + constant)) / abs(sumout$theta[i] + constant)
+      sumout$mean[i] - sumout$theta[i]
+    sumout$bias_pct[i] <-
+      (sumout$mean[i] - sumout$theta[i]) / abs(sumout$theta[i])
   }
   
+  
   # Calculate relative bias in the standardized grand means.
-  # Constant of 1 added for Group 1, whose population mean is 0.
   sumout$bias_st <- NA
+  sumout$bias_pct_st <- NA
+  
   for (i in 1:nrow(sumout)) {
-    constant <- ifelse(sumout$theta[i] == 0, 1, 0)
     sumout$bias_st[i] <-
-      ((sumout$mean_st[i] + constant) - (sumout$theta[i] + constant)) / abs(sumout$theta[i] + constant)
+      sumout$mean_st[i] - sumout$theta[i]
+    sumout$bias_pct_st[i] <-
+      (sumout$mean_st[i] - sumout$theta[i]) / abs(sumout$theta[i])
   }
+  
   
   sumout$n_rep <- length(unique(df$samp_num))
   sumout <- sumout %>%
