@@ -254,10 +254,11 @@ equateSim <- function(seed = NULL,
             }
             
             # Reshape easiness parameter data so the object matches the matrix format required by mirt
-            sim_pars_d <- as_tibble(matrix(sim_pars$value[sim_pars$name %in% str_sort(unique(str_extract(pars$name, "^d[1-9]*")),
-                                                                                      na_last = NA)],
-                                           nrow = n_itm,
-                                           byrow = TRUE)) %>%
+            sim_pars_d <- as_tibble(matrix(sim_pars$value[sim_pars$name %in% 
+              str_sort(unique(str_extract(pars$name, "^d[1-9]*")),
+                  na_last = NA)],
+                  nrow = n_itm,
+                  byrow = TRUE)) %>%
               mutate(V1 = coalesce(V1, V2)) %>%
               dplyr::select(-V2) %>%
               data.matrix()

@@ -158,6 +158,9 @@ sumstat1 <- summaryStats(scen_1[["summary"]])
 longstat1 <- scen_1[["summary"]]
 ds1 <- scen_1$datasets
 
+save(sumstat1,longstat1,ds1,file="Analysis/Simulation Results/scenario_1.Rdata")
+# rm(sumstat1,longstat1,ds1)
+# load("Analysis/Simulation Results/scenario_1.Rdata")
 
 ### end scenario 1
 
@@ -187,10 +190,7 @@ sumstat2 <- summaryStats(scen_2[["summary"]])
 longstat2 <- scen_2[["summary"]]
 ds2 <- scen_2$datasets
 
-subset(longstat2, group == 0 & type == "raw" & statistic == "est_mean") %>%
-  select(avg) %>%
-  unlist() %>%
-  sd()
+save(sumstat2,longstat2,ds2,file="Analysis/Simulation Results/scenario_2.Rdata")
 
 ### end scenario 2
 
@@ -221,6 +221,9 @@ sumstat3 <- summaryStats(scen_3[["summary"]])
 longstat3 <- scen_3[["summary"]]
 ds3 <- scen_3$datasets
 
+save(sumstat3,longstat3,ds3,file="Analysis/Simulation Results/scenario_3.Rdata")
+
+
 ### end scenario 3
 
 ### scenario 4 - HRS Items in both studies
@@ -250,12 +253,15 @@ sumstat4 <- summaryStats(scen_4[["summary"]])
 longstat4 <- scen_4[["summary"]]
 ds4 <- scen_4$datasets
 
+save(sumstat4,longstat4,ds4,file="Analysis/Simulation Results/scenario_4.Rdata")
+
+
 ### end scenario 4
 
 ### scenario 5 - MHAS Items in both studies
 
 
-<cen_5 <- equateSim(seed = Seed,
+scen_5 <- equateSim(seed = Seed,
                     grp_mean = mus,
                     grp_sd = sigmas,
                     ref_grp = refGrp,
@@ -279,6 +285,9 @@ sumstat5 <- summaryStats(scen_5[["summary"]])
 longstat5 <- scen_5[["summary"]]
 ds5 <- scen_5$datasets
 
+save(sumstat5,longstat5,ds5,file="Analysis/Simulation Results/scenario_5.Rdata")
+
+
 #scen_5_data <- scen_5[["datasets"]]
 
 
@@ -296,147 +305,160 @@ ds5 <- scen_5$datasets
 ### scenario 6 -  UDAY as linking item
 
 
-vars6 <- vars[!vars %in% c("UMON",'UYER')]
-varsm6 <- varsm[!varsm %in% c("UMON",'UYER')]
-
-scen_6 <- equateSim(seed = Seed,
-                    grp_mean = mus,
-                    grp_sd = sigmas,
-                    ref_grp = refGrp,
-                    n_rep_theta = repTheta,
-                    #n_itm=length(items),
-                    pars=hrme_par,
-                    n_rep = reps,
-                    itms1=vars,
-                    itms2=varsm6,
-                    fsc_method = fsMeth,
-                    mod_res_obj=hrmecal,
-                    n_samp1 = n1,
-                    n_samp2 = n2,
-                    save_sims = TRUE,
-                    save_log = TRUE,
-                    log_file = "Logs/scenario6.txt",
-                    verbose = FALSE, 
-                    prog_bar = TRUE)
-
-sumstat6 <- summaryStats(scen_6[["summary"]])
-longstat6 <- scen_6[["summary"]]
-ds6 <- scen_6$datasets
-
-### end scenario 6
-
-### scenario 7 - UIWR as linking item, MHAS without UMON UDAY UYER
-
-varsm7 <- c(varsm[!varsm %in% c("UMON",'UYER','UDAY')],'UIWR')
-
-
-scen_7 <- equateSim(seed = Seed,
-                    grp_mean = mus,
-                    grp_sd = sigmas,
-                    ref_grp = refGrp,
-                    n_rep_theta = repTheta,
-                    #n_itm=length(items),
-                    pars=hrme_par,
-                    n_rep = reps,
-                    itms1=vars,
-                    itms2=varsm7,
-                    fsc_method = fsMeth,
-                    mod_res_obj=hrmecal,
-                    n_samp1 = n1,
-                    n_samp2 = n2,
-                    save_sims = TRUE,
-                    save_log = TRUE,
-                    log_file = "Logs/scenario7.txt",
-                    verbose = FALSE, 
-                    prog_bar = TRUE)
-
-# scen_8 <- equateSim(seed = Seed,grp_mean = mus,
-#                     grp_sd = sigmas,ref_grp = refGrp,n_rep_theta = repTheta,n_itm=length(items),
-#                     pars=hrme_par,n_rep = reps00,itms1=vars8,itms2=varsm8,fsc_method = fsMeth,
-#                     mod_res_obj=hrmecal,n_samp1 = n1,n_samp2 = n2)
-
-sumstat7 <- summaryStats(scen_7[["summary"]])
-longstat7 <- scen_7[["summary"]]
-ds7 <- scen_7$datasets
-
-### end scenario 7
-
-### scenario 8 - UIWR as linking item, HRS without UMON UDAY UYER
-
-vars8 <- vars[!vars %in% c("UMON",'UYER','UDAY')]
-varsm8 <- c(varsm,'UIWR')
-
-
-scen_8 <- equateSim(seed = Seed,
-                    grp_mean = mus,
-                    grp_sd = sigmas,
-                    ref_grp = refGrp,
-                    n_rep_theta = repTheta,
-                    #n_itm=length(items),
-                    pars=hrme_par,
-                    n_rep = reps,
-                    itms1=vars8,
-                    itms2=varsm8,
-                    fsc_method = fsMeth,
-                    mod_res_obj=hrmecal,
-                    n_samp1 = n1,
-                    n_samp2 = n2,
-                    save_sims = TRUE,
-                    save_log = TRUE,
-                    log_file = "Logs/scenario8.txt",
-                    verbose = FALSE, 
-                    prog_bar = TRUE)
-
-# seed <- 21589
-# grp_mean <- c(0,-0.24)
-# grp_sd <- c(1,1.1)
-# ref_grp <- 1
-# n_rep_theta <- 1
-# n_itm <- length(items)
-# pars <- hrme_par
-# n_rep <- 500
-# itms1 <- vars8
-# itms2 <- varsm8
-# fsc_method <- "EAP"
-# mod_res_obj <- hrmecal
-# n_samp1 <- 500
-# n_samp2 <- 500
-
-# scen_8 <- equateSim(seed = Seed,grp_mean=c(mean_hrs,mean_mhas),
-#                     grp_sd = sigmas,n_samp=500,n_rep_theta = repTheta,n_itm=length(items),
-#                     pars=hrme_par,n_rep = reps00,itms1=vars8,itms2=varsm8,fsc_method = fsMeth,
-#                     mod_res_obj=hrmecal)
-
-sumstat8 <- summaryStats(scen_8[["summary"]])
-longstat8 <- scen_8[["summary"]]
-ds8 <- scen_8$datasets
-
-scen_9 <- equateSim(seed = Seed, 
-                    grp_mean = mus,
-                    grp_sd = sigmas,
-                    ref_grp = refGrp,
-                    n_rep_theta = repTheta,
-                    #n_itm=length(items),
-                    pars=hrme_par,
-                    n_rep = reps,
-                    itms1=items,
-                    itms2=items,
-                    fsc_method = fsMeth,
-                    mod_res_obj=hrmecal,
-                    n_samp1 = n1,
-                    n_samp2 = n2,
-                    save_sims = TRUE,
-                    save_log = TRUE,
-                    log_file = "Logs/scenario9.txt",
-                    verbose = FALSE, 
-                    prog_bar = TRUE,
-                    man_override = list(iname = c("UDAY", "UMON"),
-                                        parameter = c("b", "b"), 
-                                        val = c(0, 1.928)))
-
-sumstat9 <- summaryStats(scen_9[["summary"]])
-longstat9 <- scen_9[["summary"]]
-ds9 <- scen_9$datasets
+  vars6 <- vars[!vars %in% c("UMON",'UYER')]
+  varsm6 <- varsm[!varsm %in% c("UMON",'UYER')]
+  
+  scen_6 <- equateSim(seed = Seed,
+                      grp_mean = mus,
+                      grp_sd = sigmas,
+                      ref_grp = refGrp,
+                      n_rep_theta = repTheta,
+                      #n_itm=length(items),
+                      pars=hrme_par,
+                      n_rep = reps,
+                      itms1=vars,
+                      itms2=varsm6,
+                      fsc_method = fsMeth,
+                      mod_res_obj=hrmecal,
+                      n_samp1 = n1,
+                      n_samp2 = n2,
+                      save_sims = TRUE,
+                      save_log = TRUE,
+                      log_file = "Logs/scenario6.txt",
+                      verbose = FALSE, 
+                      prog_bar = TRUE)
+  
+  sumstat6 <- summaryStats(scen_6[["summary"]])
+  longstat6 <- scen_6[["summary"]]
+  ds6 <- scen_6$datasets
+  
+  save(sumstat6,longstat6,ds6,file="Analysis/Simulation Results/scenario_6.Rdata")
+  
+  
+  ### end scenario 6
+  
+  ### scenario 7 - UIWR as linking item, MHAS without UMON UDAY UYER
+  
+  varsm7 <- c(varsm[!varsm %in% c("UMON",'UYER','UDAY')],'UIWR')
+  
+  
+  scen_7 <- equateSim(seed = Seed,
+                      grp_mean = mus,
+                      grp_sd = sigmas,
+                      ref_grp = refGrp,
+                      n_rep_theta = repTheta,
+                      #n_itm=length(items),
+                      pars=hrme_par,
+                      n_rep = reps,
+                      itms1=vars,
+                      itms2=varsm7,
+                      fsc_method = fsMeth,
+                      mod_res_obj=hrmecal,
+                      n_samp1 = n1,
+                      n_samp2 = n2,
+                      save_sims = TRUE,
+                      save_log = TRUE,
+                      log_file = "Logs/scenario7.txt",
+                      verbose = FALSE, 
+                      prog_bar = TRUE)
+  
+  # scen_8 <- equateSim(seed = Seed,grp_mean = mus,
+  #                     grp_sd = sigmas,ref_grp = refGrp,n_rep_theta = repTheta,n_itm=length(items),
+  #                     pars=hrme_par,n_rep = reps00,itms1=vars8,itms2=varsm8,fsc_method = fsMeth,
+  #                     mod_res_obj=hrmecal,n_samp1 = n1,n_samp2 = n2)
+  
+  sumstat7 <- summaryStats(scen_7[["summary"]])
+  longstat7 <- scen_7[["summary"]]
+  ds7 <- scen_7$datasets
+  
+  save(sumstat7,longstat7,ds7,file="Analysis/Simulation Results/scenario_7.Rdata")
+  
+  
+  ### end scenario 7
+  
+  ### scenario 8 - UIWR as linking item, HRS without UMON UDAY UYER
+  
+  vars8 <- vars[!vars %in% c("UMON",'UYER','UDAY')]
+  varsm8 <- c(varsm,'UIWR')
+  
+  
+  scen_8 <- equateSim(seed = Seed,
+                      grp_mean = mus,
+                      grp_sd = sigmas,
+                      ref_grp = refGrp,
+                      n_rep_theta = repTheta,
+                      #n_itm=length(items),
+                      pars=hrme_par,
+                      n_rep = reps,
+                      itms1=vars8,
+                      itms2=varsm8,
+                      fsc_method = fsMeth,
+                      mod_res_obj=hrmecal,
+                      n_samp1 = n1,
+                      n_samp2 = n2,
+                      save_sims = TRUE,
+                      save_log = TRUE,
+                      log_file = "Logs/scenario8.txt",
+                      verbose = FALSE, 
+                      prog_bar = TRUE)
+  
+  # seed <- 21589
+  # grp_mean <- c(0,-0.24)
+  # grp_sd <- c(1,1.1)
+  # ref_grp <- 1
+  # n_rep_theta <- 1
+  # n_itm <- length(items)
+  # pars <- hrme_par
+  # n_rep <- 500
+  # itms1 <- vars8
+  # itms2 <- varsm8
+  # fsc_method <- "EAP"
+  # mod_res_obj <- hrmecal
+  # n_samp1 <- 500
+  # n_samp2 <- 500
+  
+  # scen_8 <- equateSim(seed = Seed,grp_mean=c(mean_hrs,mean_mhas),
+  #                     grp_sd = sigmas,n_samp=500,n_rep_theta = repTheta,n_itm=length(items),
+  #                     pars=hrme_par,n_rep = reps00,itms1=vars8,itms2=varsm8,fsc_method = fsMeth,
+  #                     mod_res_obj=hrmecal)
+  
+  sumstat8 <- summaryStats(scen_8[["summary"]])
+  longstat8 <- scen_8[["summary"]]
+  ds8 <- scen_8$datasets
+  
+  save(sumstat8,longstat8,ds8,file="Analysis/Simulation Results/scenario_8.Rdata")
+  
+  
+  scen_9 <- equateSim(seed = Seed, 
+                      grp_mean = mus,
+                      grp_sd = sigmas,
+                      ref_grp = refGrp,
+                      n_rep_theta = repTheta,
+                      #n_itm=length(items),
+                      pars=hrme_par,
+                      n_rep = reps,
+                      itms1=vars,
+                      itms2=varsm,
+                      # itms1=items,
+                      # itms2=items,
+                      fsc_method = fsMeth,
+                      mod_res_obj=hrmecal,
+                      n_samp1 = n1,
+                      n_samp2 = n2,
+                      save_sims = TRUE,
+                      save_log = TRUE,
+                      log_file = "Logs/scenario9.txt",
+                      verbose = FALSE, 
+                      prog_bar = TRUE,
+                      man_override = list(iname = c("UDAY", "UMON"),
+                                          parameter = c("b", "b"), 
+                                          val = c(0, 1.928)))
+  
+  sumstat9 <- summaryStats(scen_9[["summary"]])
+  longstat9 <- scen_9[["summary"]]
+  ds9 <- scen_9$datasets
+  
+  save(sumstat9,longstat9,ds9,file="Analysis/Simulation Results/scenario_9.Rdata")
 
 
 
@@ -533,10 +555,10 @@ sumstat$scenario_label <- factor(sumstat$scenario,
                                             "HRS+MHAS_UMON(b=1.928)_UDAY(b=0)_UYER(b=-1.928)_shared"))
 
 #save(sumstat,mean_sd,file=paste0("Results/simulation_results_",format(Sys.time(), '%Y-%m-%d-%H-%M'),".RData"))
-saveRDS(sumstat,file=paste0("Results/sumstat_",format(Sys.time(), '%Y-%m-%d-%H-%M'),".rds"))
+saveRDS(sumstat,file=paste0("Analysis/Simulation Results/sumstat_",format(Sys.time(), '%Y-%m-%d-%H-%M'),".rds"))
 #sumstat <- readRDS("Results/sumstat_2020-07-08-18-13.rds")
 
-save(file=paste0("Results/simulation_results_",format(Sys.time(), '%Y-%m-%d-%H-%M'),".RData"))
+# save(file=paste0("Results/simulation_results_",format(Sys.time(), '%Y-%m-%d-%H-%M'),".RData"))
 #load()
 
 
