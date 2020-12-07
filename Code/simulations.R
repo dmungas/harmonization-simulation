@@ -23,7 +23,7 @@ runOrRead <- "run" # If "read", reads in old files. If "run," generates new simu
 #readFolder <- "Output/2020-10-05_11-00-AM/Results"
 
 Seed <- 21589
-mus <- c(0, -0.24)
+#mus <- c(0, -0.24) # set below (after calibration)
 #sigmas <- c(sd_hrs, sd_mhas) # set below (after calibration)
 refGrp <- 1
 repTheta <- 1
@@ -47,7 +47,7 @@ varsm <- c("UDAY","UFCO2","UFRE1","UMON","UVSC","UWD","UWR1","UWR2","UWR3","UYER
 
 # select HRS items and persons
 hrs <- tics[tics$study_name_short %in% c("HRS_CODA_W6","HRS_W6"),c("newid",
-                                                                   "study_wave_number","study_name_short",vars)]
+    "study_wave_number","study_name_short",vars)]
 hrs$n_itm <- apply(hrs[,vars],1,function(x) sum(!is.na(x)))
 hrs <- hrs[!hrs$n_itm ==0,]
 
@@ -57,8 +57,10 @@ hrs_par <- mirt(hrs[,vars],m1hrs,pars='values') # generates item parameters file
 hrscal <- mirt(hrs[,vars],m1hrs,pars=hrs_par) # IRT calibration
 # coef(hrscal)
 # coef(hrscal, IRTpars = TRUE)
-hrscal_inf <- infoCalc(hrscal)
-plot(hrscal_inf$ability,hrscal_inf$information)
+# hrscal_inf <- infoCalc(hrscal)
+# plot(hrscal_inf$ability,hrscal_inf$information)
+
+hrs_par0 <- mod2values(hrscal)
 
 
 m2hrs <- mirt.model('cog = 1-11')
@@ -93,19 +95,27 @@ mexcal <- mirt(mex[,varsm],m1mex,pars=mex_par)
 #  mirt calibration of combined HRS and MHAS 
 
 hrme <- tics[tics$study_name_short %in% c("HRS_CODA_W6","HRS_W6") |
-               tics$study_name_short %in% c("MHAS_W1","MHAS_W2"),c("newid",
-                                                                   "study_wave_number","study_name_short",union(vars,varsm))]
+    tics$study_name_short %in% c("MHAS_W1","MHAS_W2"),c("newid",
+    "study_wave_number","study_name_short",union(vars,varsm))]
 hrme$n_itm <- apply(hrme[,union(vars,varsm)],1,function(x) sum(!is.na(x)))
 hrme <- hrme[!hrme$n_itm == 0,]
 
 m1hrme <- mirt.model('cog = 1-19')
 hrme_par <- mirt(hrme[,union(vars,varsm)],m1hrme,pars='values')
 
+for (i in 1:nrow(hrs_par0)) {
+  if (!hrs_par0[i,"item"] %in% c("UDAY","UMON","UYER")) {
+    hrme_par[hrme_par$item == hrs_par0[i,"item"] & 
+        hrme_par$name == hrs_par0[i,"name"],"value"] <- hrs_par0[i,"value"]
+    hrme_par[hrme_par$item == hrs_par0[i,"item"] & 
+        hrme_par$name == hrs_par0[i,"name"],"est"] <- FALSE
+  }
+}
+hrme_par[hrme_par$item == "GROUP","est"] <- TRUE
 
 hrmecal <- mirt(data = hrme[,union(vars,varsm)], model = m1hrme, pars = hrme_par)
 # hrmecal <- mirt(hrme[,union(vars,varsm)],m1hrme)
 # coef(hrmecal)
-# parameters(hrmecal)
 
 # coef(hrmecal, IRTpars = TRUE, simplify = TRUE)$items %>%
 #   DT::datatable(options = list(pageLength = 19), rownames = TRUE) %>%
@@ -131,8 +141,11 @@ sd <- c(sd_hrs,sd_mhas,sd_all)
 mean_sd <- data.frame(mean,sd)
 row.names(mean_sd) <- c("Group 1","Group 2","Combined")
 
+rm(hrs_par0)
+
 # ----------------------------end mirt calibration -----------------------------
 
+mus <- c(mean_hrs, mean_mhas)
 sigmas <- c(sd_hrs, sd_mhas)
                                         
 # *************************** Simulation Scenarios *****************************
@@ -691,14 +704,22 @@ sumlong <- sumstat %>%
                        labels = c("Unstandardized", "Standardized"))) %>%
   mutate(avg = mean)
 
-thetalines3 <- data.frame(group = rep(c("Group 1", "Group 2", "Combined"), 2),
-                         name = rep(c("mean", "mean_st"), each = 3),
-                         value = rep(c(0, -.24, -.12), 2)) %>%
+  thetalines3 <- data.frame(group = rep(c("Group 1", "Group 2", "Combined"), 2),
+      name = rep(c("mean", "mean_st"), each = 3),
+      value = rep(c(mean_sd["Group 1","mean"],mean_sd["Group 2","mean"],
+          mean_sd["Combined","mean"]), 2)) %>%
+  # thetalines3 <- data.frame(group = rep(c("Group 1", "Group 2", "Combined"), 2),
+  #                           name = rep(c("mean", "mean_st"), each = 3),
+  #                           value = rep(c(0, -.24, -.12), 2)) %>%
   mutate(Group = factor(group, levels = c("Combined", "Group 1", "Group 2")))
 
-thetalines2 <- data.frame(group = rep(c("Group 2", "Combined"), 2),
-                         name = rep(c("mean", "mean_st"), each = 2), 
-                         value = rep(c(-.24, -.12), 2)) %>%
+  thetalines2 <- data.frame(group = rep(c("Group 2", "Combined"), 2),
+      name = rep(c("mean", "mean_st"), each = 2), 
+      value = rep(c(mean_sd["Group 2","mean"],
+          mean_sd["Combined","mean"]), 2)) %>%
+  # thetalines2 <- data.frame(group = rep(c("Group 2", "Combined"), 2),
+  #                           name = rep(c("mean", "mean_st"), each = 2), 
+  #                           value = rep(c(-.24, -.12), 2)) %>%
   mutate(Group = factor(group, levels = c("Combined", "Group 2")))
 
 # Bar plots with 95% CIs (doesn't look that nice)
@@ -727,6 +748,7 @@ for(s in unique(longstat$type)){
     filter(statistic == "est_mean") %>%
     mutate(scenF = factor(scenario, levels = 1:nscen, labels = paste0("Scenario ", 1:nscen))) %>%
     mutate(Group = factor(group, levels = 0:2, labels = c("Combined", "Group 1", "Group 2"))) %>%
+    mutate(Group = factor(Group,levels=c("Combined", "Group 2", "Group 1"))) %>%
     ggplot(aes(x = fct_rev(scenF), y = avg, fill = scenF)) +
     geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8, scale = "width") +
     geom_point(aes(y = avg, color = scenF), 
@@ -752,8 +774,6 @@ for(s in unique(longstat$type)){
   
   ggsave(file.path(plotPath, paste0("Figure_", s, ".tiff")), width = 6.5, height = 4.5) # High quality for submission
   ggsave(file.path(plotPath, paste0("Figure_", s, ".png")), width = 6.5, height = 4.5) # For Word doc
-  
-
 }
 
 ## Bland-Altman Plots
