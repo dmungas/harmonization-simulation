@@ -704,14 +704,21 @@ sumlong <- sumstat %>%
                        labels = c("Unstandardized", "Standardized"))) %>%
   mutate(avg = mean)
 
-  thetalines3 <- data.frame(group = rep(c("Group 1", "Group 2", "Combined"), 2),
-      name = rep(c("mean", "mean_st"), each = 3),
-      value = rep(c(mean_sd["Group 1","mean"],mean_sd["Group 2","mean"],
-          mean_sd["Combined","mean"]), 2)) %>%
+thetalines3 <- data.frame(group = rep(c("Group 1", "Group 2", "Combined"), 2),
+                          name = rep(c("mean", "mean_st"), each = 3),
+                          value = rep(c(mean_sd["Group 1","mean"],
+                                        mean_sd["Group 2","mean"],
+                                        (n1*mean_sd["Group 1","mean"] + n2*mean_sd["Group 2","mean"]) / (n1+n2)),
+                                      2)) %>%
   # thetalines3 <- data.frame(group = rep(c("Group 1", "Group 2", "Combined"), 2),
   #                           name = rep(c("mean", "mean_st"), each = 3),
   #                           value = rep(c(0, -.24, -.12), 2)) %>%
   mutate(Group = factor(group, levels = c("Combined", "Group 1", "Group 2")))
+
+cgm <- (n1*mean_sd["Group 1","mean"] + n2*mean_sd["Group 2","mean"]) / (n1+n2)
+cgsd <- ((n1*(mean_sd["Group 1", "sd"]^2 + (mean_sd["Group 1","mean"] - cgm)^2) + 
+  n2*(mean_sd["Group 2", "sd"]^2 + (mean_sd["Group 2","mean"] - cgm)^2) ) / (n1 + n2)) %>%
+  sqrt()
 
   thetalines2 <- data.frame(group = rep(c("Group 2", "Combined"), 2),
       name = rep(c("mean", "mean_st"), each = 2), 
@@ -845,7 +852,11 @@ table(badat$w30_st, badat$scenario, badat$group) %>%
 table(badat$w30_st, badat$scenario) %>%
   prop.table(margin = 2)
 
+# Because the sample sizes in the original data set (HRS + MHAS) differ from the sample sizes used in the simulations, 
+                    # report the expected M & SD of the combined group given n1 and n2 specified in this code.
+cat(paste0("The M (SD) of the Combined Group -- using the sample sizes defined in the simulation -- is ", sprintf("%.3f", cgm), " (", sprintf("%.3f", cgsd), ")"))
 
+                    
 # sumstatt <- readRDS("Results/sumstat_2020-01-07-13-23.rds")
 # ---------------------------------End Scenarios -------------------------------
 
